@@ -10,7 +10,7 @@ public class MemberConfig {
     public String address;
     public int port;
     public boolean isProposer;
-    public double maxDelay;
+    public long maxDelay;
     public double reliability;
     public double chanceSheoak;
     public double chanceCoorong;
@@ -54,7 +54,7 @@ public class MemberConfig {
         this.address = properties.getProperty(memberID + ".address", properties.getProperty("address.default"));
         this.port = this.id + Integer.parseInt(properties.getProperty(memberID + ".base_port", properties.getProperty("base_port.default")));
         this.isProposer = Boolean.parseBoolean(properties.getProperty(memberID + ".proposer", properties.getProperty("proposer.default")));
-        this.maxDelay = Double.parseDouble(properties.getProperty(memberID + ".max_delay", properties.getProperty("max_delay.default")));
+        this.maxDelay = Long.parseLong(properties.getProperty(memberID + ".max_delay", properties.getProperty("max_delay.default")));
         this.reliability = Double.parseDouble(properties.getProperty(memberID + ".reliability", properties.getProperty("reliability.default")));
         this.chanceSheoak = Double.parseDouble(properties.getProperty(memberID + ".sheoak", properties.getProperty("sheoak.default")));
         this.chanceCoorong = Double.parseDouble(properties.getProperty(memberID + ".coorong", properties.getProperty("coorong.default")));
