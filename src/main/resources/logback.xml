@@ -1,7 +1,10 @@
 <?xml version="1.0" encoding="UTF-8"?>
 
 <!--
-SLF4J supports the following log levels, in order of increasing severity:
+
+This logging config was written with the assistance of a LLM.
+
+In order of increasing severity:
 	1.	TRACE: Finest-grained informational events useful for debugging.
 	2.	DEBUG: Informational events useful for debugging.
 	3.	INFO: General informational messages.
