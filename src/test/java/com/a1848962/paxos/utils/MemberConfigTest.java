@@ -12,11 +12,23 @@ class MemberConfigTest {
 
         assertEquals("localhost", config.address, "Default address should be 'localhost'");
         assertEquals(5004, config.port, "M4 port should be 5004");
-        assertFalse(config.isProposer, "M4 should not be a proposer");
+        assertEquals(config.role, "ACCEPTOR", "Default role should be 'ACCEPTOR'");
         assertEquals(100, config.maxDelay, "Default maxDelay should be 100ms");
         assertEquals(1, config.reliability,"Default reliability should be 1");
         assertEquals(0, config.chanceSheoak, "Default sheoak should be 0");
         assertEquals(0, config.chanceCoorong, "Default coorong should be 0");
+    }
+
+    @Test
+    void testConnectionInfo() {
+        // test for member with no specific overrides
+        MemberConfig config = new MemberConfig("M4");
+
+        assertEquals(5001, config.network.get("M1").port, "M1 port should be 5001");
+        assertEquals("localhost", config.network.get("M1").address, "M1 address should be localhost");
+        assertEquals(5009, config.network.get("M9").port, "M9 port should be 5009");
+        assertEquals("localhost", config.network.get("M1").address, "M9 address should be localhost");
+        assertNull(config.network.get("M4"), "Self should not be in network map");
     }
 
     @Test
@@ -26,7 +38,7 @@ class MemberConfigTest {
 
         assertEquals("localhost", config.address, "Default address should be 'localhost'");
         assertEquals(5002, config.port, "M2 port should be 5002");
-        assertTrue(config.isProposer, "M2 should be a proposer");
+        assertEquals(config.role, "PROPOSER", "M2 role should be 'PROPOSER'");
         assertEquals(200, config.maxDelay, "M2 maxDelay should be 200ms");
         assertEquals(0.7, config.reliability,"Default reliability should be 1");
         assertEquals(0.2, config.chanceSheoak, "M2 sheoak should be 0.2");
@@ -49,7 +61,7 @@ class MemberConfigTest {
     void testToString() {
         MemberConfig config = new MemberConfig("M4");
 
-        String expectedString = "MemberConfig{id=4, address='localhost', port=5004, isProposer=false, maxDelay=100, reliability=1.0, chanceSheoak=0.0, chanceCoorong=0.0}";
+        String expectedString = "MemberConfig{id=M4, address='localhost', port=5004, role=ACCEPTOR, maxDelay=100, reliability=1.0, chanceSheoak=0.0, chanceCoorong=0.0}";
         String actualString = config.toString();
 
         assertEquals(expectedString, actualString, "toString method should return the expected string");
