@@ -31,7 +31,7 @@ public class Network {
      * Interface to handle received messages. This is my first attempt at using an interface.
      */
     public interface PaxosHandler {
-        void handleMessage(Message message, OutputStream socketOut);
+        void handleIncomingMessage(Message message, OutputStream socketOut);
     }
 
     /**
@@ -81,9 +81,8 @@ public class Network {
             String receivedString = socketIn.readLine();
             if (receivedString != null && !receivedString.isEmpty()) {
                 Message receivedMessage = Message.unmarshall(receivedString);
-                handler.handleMessage(receivedMessage, socketOut);
+                handler.handleIncomingMessage(receivedMessage, socketOut);
             }
-
         } catch (IOException e) {
             logger.error("Network: Error handling incoming connection - {}", e.getMessage());
         }

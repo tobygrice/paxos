@@ -20,7 +20,7 @@ public class Learner extends Member {
     }
 
     @Override
-    public void handleMessage(Message message, OutputStream socketOut) {
+    public void handleIncomingMessage(Message message, OutputStream socketOut) {
         if (message.type.equals("LEARN")) {
             handleLearn(message, socketOut);
         } else {

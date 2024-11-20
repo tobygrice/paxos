@@ -18,7 +18,6 @@ public abstract class Member implements Network.PaxosHandler {
     protected Network network;
 
     // declare utility member variables
-    protected final ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor();
     protected static final Logger logger = LoggerFactory.getLogger(Member.class);
     protected final Random random = new Random();
 
@@ -31,8 +30,20 @@ public abstract class Member implements Network.PaxosHandler {
     }
 
     @Override
-    public abstract void handleMessage(Message message, OutputStream socketOut);
+    public abstract void handleIncomingMessage(Message message, OutputStream socketOut);
 
+    /**
+     * Shuts down the member gracefully by closing network connections and executor services.
+     */
+    public void shutdown() {
+        try {
+            // shutdown network
+            if (network != null) network.shutdown();
+            logger.info("{}: Member shutdown complete.", memberID);
+        } catch (Exception e) {
+            logger.error("{}: Error during shutdown - {}", memberID, e.getMessage());
+        }
+    }
 
     public static void main(String[] args) {
         if (args.length != 1) {

@@ -13,7 +13,7 @@ public class Acceptor extends Learner {
     }
 
     @Override
-    public void handleMessage(Message message, OutputStream socketOut) {
+    public void handleIncomingMessage(Message message, OutputStream socketOut) {
         switch (message.type) {
             case "PREPARE":
                 handlePrepare(message, socketOut);
@@ -22,7 +22,7 @@ public class Acceptor extends Learner {
                 handleAcceptRequest(message, socketOut);
                 break;
             case "LEARN":
-                super.handleMessage(message, socketOut);
+                super.handleIncomingMessage(message, socketOut);
                 break;
             default:
                 logger.warn("{}: Acceptor node received message type it cannot handle: {}", memberID, message.type);
