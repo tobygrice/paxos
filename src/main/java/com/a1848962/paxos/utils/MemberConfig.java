@@ -16,14 +16,18 @@ public class MemberConfig {
     public double chanceSheoak;
     public double chanceCoorong;
 
-    // map to hold connection info of all members: key = memberID, value = ConnectionInfo
-    public HashMap<String, ConnectionInfo> network;
+    // map to hold connection info of all members: key = memberID, value = MemberInfo
+    public HashMap<String, MemberInfo> network;
 
-    public static class ConnectionInfo {
+    public static class MemberInfo {
+        public String id;
+        public String role;
         public String address;
         public int port;
 
-        public ConnectionInfo(String address, int port) {
+        public MemberInfo(String id, String role, String address, int port) {
+            this.id = id;
+            this.role = role;
             this.address = address;
             this.port = port;
         }
@@ -73,9 +77,19 @@ public class MemberConfig {
         String[] members = membersStr.split(",");
         for (String m : members) {
             if (m.equals(memberID)) continue; // do not add self to network hashmap
-            String tempAddress = properties.getProperty(memberID + ".address", properties.getProperty("address.default"));
-            int tempPort = Integer.parseInt(m.substring(1)) + Integer.parseInt(properties.getProperty(memberID + ".base_port", properties.getProperty("base_port.default")));
-            this.network.put(m, new ConnectionInfo(tempAddress, tempPort));
+            String tempRole;
+            if (Boolean.parseBoolean(properties.getProperty(m + ".proposer", properties.getProperty("proposer.default")))) {
+                tempRole = "PROPOSER";
+            } else if (Boolean.parseBoolean(properties.getProperty(m + ".acceptor", properties.getProperty("acceptor.default")))) {
+                tempRole = "ACCEPTOR";
+            } else if (Boolean.parseBoolean(properties.getProperty(m + ".learner", properties.getProperty("learner.default")))) {
+                tempRole = "LEARNER";
+            } else {
+                tempRole = "NONE";
+            }
+            String tempAddress = properties.getProperty(m + ".address", properties.getProperty("address.default"));
+            int tempPort = Integer.parseInt(m.substring(1)) + Integer.parseInt(properties.getProperty(m + ".base_port", properties.getProperty("base_port.default")));
+            this.network.put(m, new MemberInfo(m, tempRole, tempAddress, tempPort));
         }
 
         // parse properties

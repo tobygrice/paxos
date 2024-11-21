@@ -30,9 +30,20 @@ public class Acceptor extends Learner {
     }
 
     private void handlePrepare(Message message, OutputStream socketOut) {
+    /* If n is greater than any previous proposal number seen by the acceptor:
+        - Acceptor returns a promise to ignore all future proposals with a number < n
+        - If the acceptor accepted a proposal at some point in the past, it must include the previous proposal number + value in its response to the proposer
+        - send **_prepare-ok_**
+	   Otherwise, ignore
+     */
     }
 
     private void handleAcceptRequest(Message message, OutputStream socketOut) {
+        /*
+        If an acceptor receives an Accept Request message for a proposal n, it must accept (send ***accept-ok***)
+        - **if and only if** it has not already promised to only consider proposals having an identifier greater than n -> also implies acceptor considers proposer LEADER.
+        - If it has, respond with **accept-reject**
+         */
     }
 
     @Override
