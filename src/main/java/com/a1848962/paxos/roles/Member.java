@@ -17,6 +17,8 @@ public abstract class Member implements Network.PaxosHandler {
     protected MemberConfig config;
     protected Network network;
 
+    protected String learnedValue;
+
     // declare utility member variables
     protected static final Logger logger = LoggerFactory.getLogger(Member.class);
     protected final Random random = new Random();
@@ -57,21 +59,15 @@ public abstract class Member implements Network.PaxosHandler {
         Member member; // declare abstract member class
 
         // assign subclass based on role:
-        switch (config.role) {
-            case "PROPOSER":
-                member = new Proposer(config);
-                logger.info("{} assigned Proposer class", config.id);
-                break;
-            case "ACCEPTOR":
-                member = new Acceptor(config);
-                logger.info("{} assigned Acceptor class", config.id);
-                break;
-            case "LEARNER":
-                member = new Learner(config);
-                logger.info("{} assigned Learner class", config.id);
-                break;
-            default:
-                throw new IllegalArgumentException("Invalid role: " + config.role);
+        if (config.isProposer) {
+            member = new Proposer(config);
+            logger.info("{} assigned Proposer class", config.id);
+        } else if (config.isAcceptor) {
+            member = new Acceptor(config);
+            logger.info("{} assigned Acceptor class", config.id);
+        } else {
+            member = new Learner(config);
+            logger.info("{} assigned Learner class", config.id);
         }
 
         member.start(); // polymorphic call to start method

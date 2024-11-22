@@ -12,7 +12,9 @@ class MemberConfigTest {
 
         assertEquals("localhost", config.address, "Default address should be 'localhost'");
         assertEquals(5004, config.port, "M4 port should be 5004");
-        assertEquals(config.role, "ACCEPTOR", "Default role should be 'ACCEPTOR'");
+        assertFalse(config.isProposer, "Node should not be PROPOSER by default");
+        assertTrue(config.isAcceptor, "Node should be ACCEPTOR by default");
+        assertTrue(config.isLearner, "Node should be LEARNER by default");
         assertEquals(100, config.maxDelay, "Default maxDelay should be 100ms");
         assertEquals(1, config.reliability,"Default reliability should be 1");
         assertEquals(0, config.chanceSheoak, "Default sheoak should be 0");
@@ -38,9 +40,11 @@ class MemberConfigTest {
 
         assertEquals("localhost", config.address, "Default address should be 'localhost'");
         assertEquals(5002, config.port, "M2 port should be 5002");
-        assertEquals(config.role, "PROPOSER", "M2 role should be 'PROPOSER'");
+        assertTrue(config.isProposer, "Node should be specified PROPOSER");
+        assertTrue(config.isAcceptor, "Node should be ACCEPTOR by default");
+        assertTrue(config.isLearner, "Node should be LEARNER by default");
         assertEquals(200, config.maxDelay, "M2 maxDelay should be 200ms");
-        assertEquals(0.7, config.reliability,"Default reliability should be 1");
+        assertEquals(0.8, config.reliability,"M2's reliability should be 0.8");
         assertEquals(0.2, config.chanceSheoak, "M2 sheoak should be 0.2");
         assertEquals(0, config.chanceCoorong, "Default coorong should be 0");
     }
@@ -61,7 +65,7 @@ class MemberConfigTest {
     void testToString() {
         MemberConfig config = new MemberConfig("M4");
 
-        String expectedString = "MemberConfig{id=M4, address='localhost', port=5004, role=ACCEPTOR, maxDelay=100, reliability=1.0, chanceSheoak=0.0, chanceCoorong=0.0}";
+        String expectedString = "MemberConfig{id=M4, address='localhost', port=5004, isProposer=false, isAcceptor=true, isLearner=true, maxDelay=100, reliability=1.0, chanceSheoak=0.0, chanceCoorong=0.0}";
         String actualString = config.toString();
 
         assertEquals(expectedString, actualString, "toString method should return the expected string");

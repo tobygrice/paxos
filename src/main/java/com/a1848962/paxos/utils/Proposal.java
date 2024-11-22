@@ -17,10 +17,11 @@ public class Proposal {
 
     private final int proposalNumber;
     private final ConcurrentHashMap<String, Message> promises = new ConcurrentHashMap<>();
-    private final ConcurrentHashMap<String, Message> accepteds = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<String, Message> accepts = new ConcurrentHashMap<>();
     private final AtomicInteger rejectCount = new AtomicInteger(0);
-    private volatile boolean completed = false;
 
+    public volatile boolean phaseOneCompleted = false;
+    private volatile boolean phaseTwoCompleted = false;
 
     /**
      * Object representing a proposal.
@@ -38,8 +39,8 @@ public class Proposal {
         promises.put(promise.senderID, promise);
     }
 
-    public void addAccepted(Message accepted) {
-        accepteds.put(accepted.senderID, accepted);
+    public void addAccept(Message accept) {
+        accepts.put(accept.senderID, accept);
     }
 
     public Collection<Message> getPromises() {
@@ -50,8 +51,12 @@ public class Proposal {
         return promises.size();
     }
 
-    public int getAcceptedCount() {
-        return accepteds.size();
+    public int getAcceptCount() {
+        return accepts.size();
+    }
+
+    public void resetRejectCount() {
+        rejectCount.set(0);
     }
 
     public void incrementRejectCount() {
@@ -63,10 +68,10 @@ public class Proposal {
     }
 
     public boolean isCompleted() {
-        return completed;
+        return phaseOneCompleted && phaseTwoCompleted;
     }
 
     public void markCompleted() {
-        this.completed = true;
+        phaseOneCompleted = phaseTwoCompleted = true;
     }
 }

@@ -15,10 +15,10 @@ public class Acceptor extends Learner {
     @Override
     public void handleIncomingMessage(Message message, OutputStream socketOut) {
         switch (message.type) {
-            case "PREPARE":
-                handlePrepare(message, socketOut);
+            case "PREPARE_REQ":
+                handlePrepareRequest(message, socketOut);
                 break;
-            case "ACCEPT_REQUEST":
+            case "ACCEPT_REQ":
                 handleAcceptRequest(message, socketOut);
                 break;
             case "LEARN":
@@ -29,7 +29,7 @@ public class Acceptor extends Learner {
         }
     }
 
-    private void handlePrepare(Message message, OutputStream socketOut) {
+    private void handlePrepareRequest(Message message, OutputStream socketOut) {
     /* If n is greater than any previous proposal number seen by the acceptor:
         - Acceptor returns a promise to ignore all future proposals with a number < n
         - If the acceptor accepted a proposal at some point in the past, it must include the previous proposal number + value in its response to the proposer

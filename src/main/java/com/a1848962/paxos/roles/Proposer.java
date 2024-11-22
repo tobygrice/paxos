@@ -66,15 +66,39 @@ public class Proposer extends Acceptor {
         }
 
         switch (message.type) {
+            // most of the time PROMISE/ACCEPT/REJECT messages will be sent as a response to an open socket, and so they
+            // will not reach this handler. They are included here in case the sender needs to resend the message.
             case "PROMISE":
-            case "ACCEPTED":
-            case "REJECTED":
+                // promise message can only be in response to a prepare request
                 handlePrepareResponse(message);
                 break;
-            case "PREPARE":
-            case "ACCEPT_REQUEST":
+            case "ACCEPT":
+                // accept message can only be in response to an accept request
+                handleAcceptReqResponse(message);
+                break;
+            case "REJECT":
+                // reject message could be in response to prepare or accept requests, find out which:
+                int proposalNumber = message.proposalNumber;
+                Proposal proposal = activeProposals.get(proposalNumber);
+                if (proposal == null) {
+                    logger.info("{}: Received incoming reject message for unknown proposal number {}", memberID, proposalNumber);
+                } else {
+                    if (!proposal.phaseOneCompleted) {
+                        // proposal is active and phase one is incomplete, REJECT is in response to prepare request
+                        handlePrepareResponse(message);
+                    } else if (!proposal.isCompleted()) {
+                        // proposal is active and phase two is incomplete, REJECT is in response to accept request
+                        handleAcceptReqResponse(message);
+                    }
+                }
+            case "PREPARE_REQ":
+            case "ACCEPT_REQ":
+                // message is for acceptors (in this assignment, all proposers will also be acceptors & learners so
+                // these role checking if-statements are redundant, I have included them for robustness)
+                if (this.config.isAcceptor) super.handleIncomingMessage(message, socketOut);
             case "LEARN":
-                super.handleIncomingMessage(message, socketOut);
+                // message is for learners
+                if (this.config.isLearner) super.handleIncomingMessage(message, socketOut);
                 break;
             default:
                 logger.warn("{}: Proposer node received message type it cannot handle: {}", memberID, message.type);
@@ -83,22 +107,22 @@ public class Proposer extends Acceptor {
 
     private void sendPrepare() {
         int currentProposalNum = proposalCounter.incrementAndGet();
-        logger.info("{}: Broadcasting PREPARE with proposal number {}", memberID, currentProposalNum);
+        logger.info("{}: Broadcasting PREPARE_REQ with proposal number {}", memberID, currentProposalNum);
 
-        Message prepare = Message.prepare(currentProposalNum, memberID);
+        Message prepare = Message.prepareRequest(currentProposalNum, memberID);
         Proposal proposal = new Proposal(currentProposalNum);
         activeProposals.put(currentProposalNum, proposal);
 
         // send to all acceptors in network:
         for (MemberConfig.MemberInfo memberInfo : this.config.network.values()) {
-            if (!memberInfo.role.equals("LEARNER")) {
+            if (memberInfo.isAcceptor) {
                 network.sendMessage(memberInfo.address, memberInfo.port, prepare)
                         .thenAccept(this::handlePrepareResponse)
                         .exceptionally(ex -> {
-                            logger.error("{}: Failed to send PREPARE to {} - {}",
+                            logger.error("{}: Failed to send PREPARE_REQ to {} - {}",
                                     memberID, memberInfo.id, ex.getMessage());
                             proposal.incrementRejectCount();
-                            checkProposalStatus(proposal);
+                            checkPhaseOneMajority(proposal);
                             return null;
                         });
             }
@@ -107,9 +131,9 @@ public class Proposer extends Acceptor {
         // schedule proposal to timeout and retry after RETRY_DELAY
         scheduler.schedule(() -> {
             if (!proposal.isCompleted()) {
-                logger.warn("{}: Proposal {} timed out. Retrying with higher proposal number.",
+                logger.warn("{}: Proposal {} timed out. Starting new proposal.",
                         memberID, currentProposalNum);
-                activeProposals.remove(currentProposalNum);
+                activeProposals.remove(proposal.getProposalNumber());
                 sendPrepare();
             }
         }, RETRY_DELAY, TimeUnit.MILLISECONDS);
@@ -125,7 +149,7 @@ public class Proposer extends Acceptor {
         Proposal proposal = activeProposals.get(proposalNumber);
 
         if (proposal == null) {
-            logger.info("{}: Received response for unknown proposal number {}", memberID, proposalNumber);
+            logger.info("{}: Received {} response for unknown proposal number {}", memberID, response.type, proposalNumber);
             return;
         }
 
@@ -133,12 +157,17 @@ public class Proposer extends Acceptor {
             proposal.addPromise(response);
             logger.info("{}: Received PROMISE from {} for proposal {}",
                     memberID, response.senderID, proposalNumber);
-            checkProposalStatus(proposal);
+            checkPhaseOneMajority(proposal);
         } else if (response.type.equalsIgnoreCase("REJECT")) {
             proposal.incrementRejectCount();
+            // if node is rejecting because it has accepted a proposal with a greater ID, update proposal counter to
+            // match to ensure next prepare message will have a current ID:
+            if (response.previouslyAcceptedProposal > this.proposalCounter.get()) {
+                proposalCounter.set(response.previouslyAcceptedProposal);
+            }
             logger.info("{}: Received REJECT from {} for proposal {}",
                     memberID, response.senderID, proposalNumber);
-            checkProposalStatus(proposal);
+            checkPhaseOneMajority(proposal);
         } else {
             logger.warn("{}: Unexpected response type '{}' from {} for proposal {}",
                     memberID, response.type, response.senderID,  proposalNumber);
@@ -150,23 +179,23 @@ public class Proposer extends Acceptor {
      *
      * @param proposal The Proposal object to check.
      */
-    private void checkProposalStatus(Proposal proposal) {
-        if (proposal.isCompleted()) {
+    private void checkPhaseOneMajority(Proposal proposal) {
+        if (proposal.phaseOneCompleted) {
+            // majority has already been reached and algorithm has progressed, just return
             return;
         }
 
         if (proposal.getPromiseCount() >= majority) {
             logger.info("{}: Majority PROMISEs received for proposal {}. Sending ACCEPT_REQUEST.",
                     memberID, proposal.getProposalNumber());
+            proposal.phaseOneCompleted = true;
+            proposal.resetRejectCount(); // reset for next phase
             sendAcceptRequest(proposal);
-            proposal.markCompleted();
-            activeProposals.remove(proposal.getProposalNumber());
         } else if (proposal.getRejectCount() >= majority) {
-            logger.warn("{}: Received too many REJECTs for proposal {}. Retrying.",
+            logger.warn("{}: Majority REJECTs received for proposal {}. Abandoning proposal.",
                     memberID, proposal.getProposalNumber());
-            proposal.markCompleted();
-            activeProposals.remove(proposal.getProposalNumber());
-            sendPrepare();
+            proposal.phaseOneCompleted = true;
+            // allow scheduler to retry prepare phase after proposal times out, to prevent livelock
         }
     }
 
@@ -178,36 +207,109 @@ public class Proposer extends Acceptor {
         - If none of the acceptors had accepted a proposal up to this point, then the proposer may choose any value for its proposal
         - The Proposer sends an Accept Request message to all nodes with the chosen value for its proposal.
          */
+
+        // assign value to proposal:
         int largestAcceptedProposal = -1;
         proposal.value = memberID; // vote for self by default
         for (Message response : proposal.getPromises()) {
-            // if node has previously accepted a proposal with a higher number, use its value for proposal
-            if (response.acceptedProposal > largestAcceptedProposal) {
-                largestAcceptedProposal = response.acceptedProposal;
-                proposal.value = response.acceptedValue != null ? response.acceptedValue : proposal.value;
+            // if any node has previously accepted a proposal, use that previously accepted value
+            if ((response.previouslyAcceptedValue != null) && (response.previouslyAcceptedProposal > largestAcceptedProposal)) {
+                largestAcceptedProposal = response.previouslyAcceptedProposal;
+                proposal.value = response.previouslyAcceptedValue;
             }
         }
 
-        // FIX MESSAGE SEND:
-
         Message acceptRequest = Message.acceptRequest(proposal.getProposalNumber(), proposal.value, memberID);
 
-        // send to all acceptors in network:
+        // send to all acceptors in the network:
         for (MemberConfig.MemberInfo memberInfo : this.config.network.values()) {
-            if (!memberInfo.role.equals("LEARNER")) {
+            if (memberInfo.isAcceptor) {
                 network.sendMessage(memberInfo.address, memberInfo.port, acceptRequest)
-                        .thenAccept(this::handlePrepareResponse)
+                        .thenAccept(this::handleAcceptReqResponse)
                         .exceptionally(ex -> {
-                            logger.error("{}: Failed to send ACCEPT_REQUEST to {} - {}",
+                            logger.error("{}: Failed to send ACCEPT_REQ to {} - {}",
                                     memberID, memberInfo.id, ex.getMessage());
                             proposal.incrementRejectCount();
-                            checkProposalStatus(proposal);
+                            checkPhaseTwoMajority(proposal);
                             return null;
                         });
             }
         }
+    }
 
+    private void handleAcceptReqResponse(Message response) {
+        int proposalNumber = response.proposalNumber;
+        Proposal proposal = activeProposals.get(proposalNumber);
 
+        if (proposal == null) {
+            logger.info("{}: Received {} response for unknown proposal number {}", memberID, response.type, proposalNumber);
+            return;
+        }
+
+        if (response.type.equals("ACCEPT")) {
+            proposal.addAccept(response);
+            logger.info("{}: Received ACCEPT from {} for proposal {}",
+                    memberID, response.senderID, proposalNumber);
+            checkPhaseTwoMajority(proposal);
+        } else if (response.type.equalsIgnoreCase("REJECT")) {
+            proposal.incrementRejectCount();
+            // if node is rejecting because it has accepted a proposal with a greater ID, update proposal counter to
+            // match to ensure next prepare message will have a current ID:
+            if (response.previouslyAcceptedProposal > this.proposalCounter.get()) {
+                proposalCounter.set(response.previouslyAcceptedProposal);
+            }
+            logger.info("{}: Received REJECT in phase two from {} for proposal {}",
+                    memberID, response.senderID, proposalNumber);
+            checkPhaseTwoMajority(proposal);
+        } else {
+            logger.warn("{}: Unexpected response type '{}' from {} for proposal {}",
+                    memberID, response.type, response.senderID,  proposalNumber);
+        }
+    }
+
+    private void checkPhaseTwoMajority(Proposal proposal) {
+        if (proposal.isCompleted()) {
+            return;
+        }
+
+        if (proposal.getAcceptCount() >= majority) {
+            logger.info("{}: Majority of nodes accepted proposal {}. Sending LEARN.",
+                    memberID, proposal.getProposalNumber());
+            sendLearn(proposal);
+            proposal.markCompleted(); // to prevent scheduler from retrying
+            activeProposals.remove(proposal.getProposalNumber());
+        } else if (proposal.getRejectCount() >= majority) {
+            logger.warn("{}: Received too many REJECTs for proposal {} in phase two. Retrying.",
+                    memberID, proposal.getProposalNumber());
+            proposal.markCompleted(); // to prevent scheduler from retrying
+            activeProposals.remove(proposal.getProposalNumber());
+            sendPrepare();
+        }
+    }
+
+    private void sendLearn(Proposal proposal) {
+        Message learn = Message.learn(proposal.getProposalNumber(), proposal.value, memberID);
+        // send to all acceptors in network:
+        for (MemberConfig.MemberInfo memberInfo : this.config.network.values()) {
+            if (memberInfo.isAcceptor) {
+                network.sendMessage(memberInfo.address, memberInfo.port, learn)
+                        .thenAccept(response -> {
+                            if (response.type.equals("ACK")) {
+                                logger.debug("{}: Member {} ACKed LEARN message", memberID, memberInfo.id);
+                            } else if (response.type.equals("NACK")) {
+                                logger.warn("{}: Member {} NACKed LEARN message", memberID, memberInfo.id);
+                            } else {
+                                logger.error("{}: Member {} sent unexpected message type {} in response to LEARN",
+                                        memberID, memberInfo.id, response.type);
+                            }
+                        })
+                        .exceptionally(ex -> {
+                            logger.error("{}: Failed to send LEARN to {} - {}",
+                                    memberID, memberInfo.id, ex.getMessage());
+                            return null;
+                        });
+            }
+        }
     }
 
 

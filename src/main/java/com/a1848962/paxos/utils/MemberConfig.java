@@ -10,7 +10,9 @@ public class MemberConfig {
     public String id;
     public String address;
     public int port;
-    public String role;
+    public boolean isLearner;
+    public boolean isAcceptor;
+    public boolean isProposer;
     public long maxDelay;
     public double reliability;
     public double chanceSheoak;
@@ -21,13 +23,17 @@ public class MemberConfig {
 
     public static class MemberInfo {
         public String id;
-        public String role;
+        public boolean isLearner;
+        public boolean isAcceptor;
+        public boolean isProposer;
         public String address;
         public int port;
 
-        public MemberInfo(String id, String role, String address, int port) {
+        public MemberInfo(String id, boolean isLearner, boolean isAcceptor, boolean isProposer, String address, int port) {
             this.id = id;
-            this.role = role;
+            this.isLearner = isLearner;
+            this.isAcceptor = isAcceptor;
+            this.isProposer = isProposer;
             this.address = address;
             this.port = port;
         }
@@ -77,19 +83,19 @@ public class MemberConfig {
         String[] members = membersStr.split(",");
         for (String m : members) {
             if (m.equals(memberID)) continue; // do not add self to network hashmap
-            String tempRole;
+            boolean tempLearner = false, tempAcceptor = false, tempProposer = false;
             if (Boolean.parseBoolean(properties.getProperty(m + ".proposer", properties.getProperty("proposer.default")))) {
-                tempRole = "PROPOSER";
-            } else if (Boolean.parseBoolean(properties.getProperty(m + ".acceptor", properties.getProperty("acceptor.default")))) {
-                tempRole = "ACCEPTOR";
-            } else if (Boolean.parseBoolean(properties.getProperty(m + ".learner", properties.getProperty("learner.default")))) {
-                tempRole = "LEARNER";
-            } else {
-                tempRole = "NONE";
+                tempProposer = true;
+            }
+            if (Boolean.parseBoolean(properties.getProperty(m + ".acceptor", properties.getProperty("acceptor.default")))) {
+                tempAcceptor = true;
+            }
+            if (Boolean.parseBoolean(properties.getProperty(m + ".learner", properties.getProperty("learner.default")))) {
+                tempLearner = true;
             }
             String tempAddress = properties.getProperty(m + ".address", properties.getProperty("address.default"));
             int tempPort = Integer.parseInt(m.substring(1)) + Integer.parseInt(properties.getProperty(m + ".base_port", properties.getProperty("base_port.default")));
-            this.network.put(m, new MemberInfo(m, tempRole, tempAddress, tempPort));
+            this.network.put(m, new MemberInfo(m, tempLearner, tempAcceptor, tempProposer, tempAddress, tempPort));
         }
 
         // parse properties
@@ -102,12 +108,15 @@ public class MemberConfig {
         this.chanceCoorong = Double.parseDouble(properties.getProperty(memberID + ".coorong", properties.getProperty("coorong.default")));
 
         if (Boolean.parseBoolean(properties.getProperty(memberID + ".proposer", properties.getProperty("proposer.default")))) {
-            this.role = "PROPOSER";
-        } else if (Boolean.parseBoolean(properties.getProperty(memberID + ".acceptor", properties.getProperty("acceptor.default")))) {
-            this.role = "ACCEPTOR";
-        } else if (Boolean.parseBoolean(properties.getProperty(memberID + ".learner", properties.getProperty("learner.default")))) {
-            this.role = "LEARNER";
-        } else {
+            this.isProposer = true;
+        }
+        if (Boolean.parseBoolean(properties.getProperty(memberID + ".acceptor", properties.getProperty("acceptor.default")))) {
+            this.isAcceptor = true;
+        }
+        if (Boolean.parseBoolean(properties.getProperty(memberID + ".learner", properties.getProperty("learner.default")))) {
+            this.isLearner = true;
+        }
+        if (!this.isLearner && !this.isAcceptor && !this.isProposer) {
             throw new RuntimeException("Member " + memberID + " has no role.");
         }
     }
@@ -118,7 +127,9 @@ public class MemberConfig {
                 "id=" + id +
                 ", address='" + address + '\'' +
                 ", port=" + port +
-                ", role=" + role +
+                ", isProposer=" + isProposer +
+                ", isAcceptor=" + isAcceptor +
+                ", isLearner=" + isLearner +
                 ", maxDelay=" + maxDelay +
                 ", reliability=" + reliability +
                 ", chanceSheoak=" + chanceSheoak +
