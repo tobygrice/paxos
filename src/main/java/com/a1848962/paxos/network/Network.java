@@ -101,7 +101,7 @@ public class Network {
     public CompletableFuture<Message> sendMessage(String address, int port, Message message) {
         return CompletableFuture.supplyAsync(() -> {
             /*
-            // simulate network delay up to MAX_DELAY length
+            // simulate networkInfo delay up to MAX_DELAY length
             try {
                 int delay = random.nextInt(MAX_DELAY);
                 Thread.sleep(delay);

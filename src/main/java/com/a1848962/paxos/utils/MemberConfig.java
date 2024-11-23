@@ -1,5 +1,7 @@
 package com.a1848962.paxos.utils;
 
+import com.a1848962.paxos.network.Network;
+
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.Properties;
@@ -7,27 +9,28 @@ import java.util.HashMap;
 
 /* class to store member configuration values parsed from member.properties */
 public class MemberConfig {
-    public String id;
-    public String address;
-    public int port;
-    public boolean isLearner;
-    public boolean isAcceptor;
-    public boolean isProposer;
-    public long maxDelay;
-    public double reliability;
-    public double chanceSheoak;
-    public double chanceCoorong;
+    public volatile String memberID;
+    public volatile Network networkTools;
+    public final String address;
+    public final int port;
+    public final boolean isLearner;
+    public final boolean isAcceptor;
+    public final boolean isProposer;
+    public final long maxDelay;
+    public final double reliability;
+    public final double chanceSheoak;
+    public final double chanceCoorong;
 
     // map to hold connection info of all members: key = memberID, value = MemberInfo
-    public HashMap<String, MemberInfo> network;
+    public HashMap<String, MemberInfo> networkInfo;
 
     public static class MemberInfo {
-        public String id;
-        public boolean isLearner;
-        public boolean isAcceptor;
-        public boolean isProposer;
-        public String address;
-        public int port;
+        public final String id;
+        public final boolean isLearner;
+        public final boolean isAcceptor;
+        public final boolean isProposer;
+        public final String address;
+        public final int port;
 
         public MemberInfo(String id, boolean isLearner, boolean isAcceptor, boolean isProposer, String address, int port) {
             this.id = id;
@@ -79,7 +82,7 @@ public class MemberConfig {
             throw new RuntimeException("'members' property is missing or empty.");
         }
 
-        this.network = new HashMap<>();
+        this.networkInfo = new HashMap<>();
         String[] members = membersStr.split(",");
         for (String m : members) {
             String thisMember = m.trim();
@@ -96,28 +99,21 @@ public class MemberConfig {
                 }
                 String tempAddress = properties.getProperty(thisMember + ".address", properties.getProperty("address.default"));
                 int tempPort = Integer.parseInt(thisMember.substring(1)) + Integer.parseInt(properties.getProperty(thisMember + ".base_port", properties.getProperty("base_port.default")));
-                this.network.put(thisMember, new MemberInfo(thisMember, tempLearner, tempAcceptor, tempProposer, tempAddress, tempPort));
+                this.networkInfo.put(thisMember, new MemberInfo(thisMember, tempLearner, tempAcceptor, tempProposer, tempAddress, tempPort));
             // }
         }
 
         // parse properties
-        this.id = memberID;
+        this.memberID = memberID;
         this.address = properties.getProperty(memberID + ".address", properties.getProperty("address.default"));
-        this.port = Integer.parseInt(id.substring(1)) + Integer.parseInt(properties.getProperty(memberID + ".base_port", properties.getProperty("base_port.default")));
+        this.port = Integer.parseInt(this.memberID.substring(1)) + Integer.parseInt(properties.getProperty(memberID + ".base_port", properties.getProperty("base_port.default")));
         this.maxDelay = Long.parseLong(properties.getProperty(memberID + ".max_delay", properties.getProperty("max_delay.default")));
         this.reliability = Double.parseDouble(properties.getProperty(memberID + ".reliability", properties.getProperty("reliability.default")));
         this.chanceSheoak = Double.parseDouble(properties.getProperty(memberID + ".sheoak", properties.getProperty("sheoak.default")));
         this.chanceCoorong = Double.parseDouble(properties.getProperty(memberID + ".coorong", properties.getProperty("coorong.default")));
-
-        if (Boolean.parseBoolean(properties.getProperty(memberID + ".proposer", properties.getProperty("proposer.default")))) {
-            this.isProposer = true;
-        }
-        if (Boolean.parseBoolean(properties.getProperty(memberID + ".acceptor", properties.getProperty("acceptor.default")))) {
-            this.isAcceptor = true;
-        }
-        if (Boolean.parseBoolean(properties.getProperty(memberID + ".learner", properties.getProperty("learner.default")))) {
-            this.isLearner = true;
-        }
+        this.isProposer = Boolean.parseBoolean(properties.getProperty(memberID + ".proposer", properties.getProperty("proposer.default")));
+        this.isAcceptor = Boolean.parseBoolean(properties.getProperty(memberID + ".acceptor", properties.getProperty("acceptor.default")));
+        this.isLearner = Boolean.parseBoolean(properties.getProperty(memberID + ".learner", properties.getProperty("learner.default")));
         if (!this.isLearner && !this.isAcceptor && !this.isProposer) {
             throw new RuntimeException("Member " + memberID + " has no role.");
         }
@@ -126,7 +122,7 @@ public class MemberConfig {
     @Override
     public String toString() {
         return "MemberConfig{" +
-                "id=" + id +
+                "memberID=" + memberID +
                 ", address='" + address + '\'' +
                 ", port=" + port +
                 ", isProposer=" + isProposer +

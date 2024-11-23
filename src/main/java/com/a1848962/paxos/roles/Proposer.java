@@ -10,8 +10,17 @@ import java.io.OutputStream;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
 
-// all proposers are acceptors
-public class Proposer extends Acceptor {
+interface ProposerRole {
+    void sendPrepareRequest();
+    void handlePrepareReqResponse(Message response);
+    void sendAcceptRequest(Proposal proposal);
+    void handleAcceptReqResponse(Message response);
+    void sendLearn(Proposal proposal);
+}
+
+public class Proposer implements ProposerRole {
+    private final MemberConfig config;
+
     // define how long a proposer will stay at Sheoak cafe or the Coorong (in milliseconds)
     private static final int TIME_IN_SHEOAK = 2000; // 2 seconds at each place
     private static final int TIME_IN_COORONG = 2000;
@@ -25,101 +34,29 @@ public class Proposer extends Acceptor {
     private String preferredLeader;
 
     private final ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(2);
-
     private final ExecutorService executor = Executors.newCachedThreadPool();
 
     public Proposer(MemberConfig config) {
-        super(config);
-        this.preferredLeader = memberID;
+        this.config = config;
+        this.preferredLeader = config.memberID;
         this.currentlySheoak = false;
-        this.majority = (config.network.size() / 2) + 1; // calculate majority required for consensus
+        this.majority = (config.networkInfo.size() / 2) + 1; // calculate majority required for consensus
     }
 
     @Override
-    public void handleIncomingMessage(Message message, OutputStream socketOut) {
-
-        // simulate chance for member to go camping
-        if (config.chanceCoorong > random.nextDouble()) {
-            // member has gone camping in the Coorong, now unreachable
-            System.out.println(memberID + " is camping in the Coorong. They are unreachable.");
-            try {
-                Thread.sleep(TIME_IN_COORONG); // unreachable whilst camping
-            } catch (InterruptedException e) {
-                throw new RuntimeException(e);
-            }
-        }
-
-        // simulate chance for member to go to Sheoak cafe
-        if (!currentlySheoak && config.chanceSheoak > random.nextDouble()) {
-            // member has gone to Sheoak cafe, responses now instant
-            System.out.println(memberID + " is at Sheoak Café. Responses are instant.");
-            this.currentlySheoak = true; // update currentlySheoak boolean and start reset timer using scheduler
-            scheduler.schedule(() -> {this.currentlySheoak = false;}, TIME_IN_SHEOAK, TimeUnit.MILLISECONDS);
-        }
-
-        // simulate random response delay up to max delay value
-        long currentMaxDelay = currentlySheoak ? 0 : config.maxDelay; // delay = 0 if currentlySheoak==true
-        long delay = (long)(random.nextDouble() * currentMaxDelay);
-        try {
-            Thread.sleep(delay);
-        } catch (InterruptedException e) {
-            throw new RuntimeException(e);
-        }
-
-        switch (message.type) {
-            // most of the time PROMISE/ACCEPT/REJECT messages will be sent as a response to an open socket, and so they
-            // will not reach this handler. They are included here in case the sender needs to resend the message.
-            case "PROMISE":
-                // promise message can only be in response to a prepare request
-                handlePrepareResponse(message);
-                break;
-            case "ACCEPT":
-                // accept message can only be in response to an accept request
-                handleAcceptReqResponse(message);
-                break;
-            case "REJECT":
-                // reject message could be in response to prepare or accept requests, find out which:
-                int proposalNumber = message.proposalNumber;
-                Proposal proposal = activeProposals.get(proposalNumber);
-                if (proposal == null) {
-                    System.out.println("PROPOSER: Received incoming REJECT from " + message.senderID + " for unknown proposal number " + proposalNumber);
-                } else {
-                    if (!proposal.isPhaseOneCompleted()) {
-                        // proposal is active and phase one is incomplete, REJECT is in response to prepare request
-                        handlePrepareResponse(message);
-                    } else if (!proposal.isCompleted()) {
-                        // proposal is active and phase two is incomplete, REJECT is in response to accept request
-                        handleAcceptReqResponse(message);
-                    }
-                }
-            case "PREPARE_REQ":
-            case "ACCEPT_REQ":
-                // message is for acceptors (in this assignment, all proposers will also be acceptors & learners so
-                // these role checking if-statements are redundant, I have included them for robustness)
-                if (this.config.isAcceptor) super.handleIncomingMessage(message, socketOut);
-                break;
-            case "LEARN":
-                // message is for learners
-                if (this.config.isLearner) super.handleIncomingMessage(message, socketOut);
-                break;
-            default:
-                System.out.println("PROPOSER: incoming incompatible message type: " + message.type);
-        }
-    }
-
-    private void sendPrepare() {
+    public void sendPrepareRequest() {
         int currentProposalNum = proposalCounter.incrementAndGet();
         System.out.println("Broadcasting PREPARE_REQ with proposal number " + currentProposalNum);
 
-        Message prepare = Message.prepareRequest(currentProposalNum, memberID);
+        Message prepare = Message.prepareRequest(currentProposalNum, config.memberID);
         Proposal proposal = new Proposal(currentProposalNum);
         activeProposals.put(currentProposalNum, proposal);
 
-        // send to all acceptors in network:
-        for (MemberConfig.MemberInfo memberInfo : this.config.network.values()) {
+        // send to all acceptors in networkInfo:
+        for (MemberConfig.MemberInfo memberInfo : this.config.networkInfo.values()) {
             if (memberInfo.isAcceptor) {
-                network.sendMessage(memberInfo.address, memberInfo.port, prepare)
-                        .thenAccept(this::handlePrepareResponse)
+                config.networkTools.sendMessage(memberInfo.address, memberInfo.port, prepare)
+                        .thenAccept(this::handlePrepareReqResponse)
                         .exceptionally(ex -> {
                             if (ex.getCause().getCause() instanceof java.net.SocketTimeoutException) {
                                 System.out.println("No response to PREPARE_REQ received from " + memberInfo.id
@@ -142,7 +79,7 @@ public class Proposer extends Acceptor {
             if (!proposal.isCompleted()) {
                 System.out.println("Proposal " + proposal.getProposalNumber() + " timed out. Starting new proposal.");
                 activeProposals.remove(proposal.getProposalNumber());
-                sendPrepare();
+                sendPrepareRequest();
             }
         }, RETRY_DELAY, TimeUnit.MILLISECONDS);
     }
@@ -152,7 +89,8 @@ public class Proposer extends Acceptor {
      *
      * @param response       The response Message.
      */
-    private void handlePrepareResponse(Message response) {
+    @Override
+    public void handlePrepareReqResponse(Message response) {
         int proposalNumber = response.proposalNumber;
         Proposal proposal = activeProposals.get(proposalNumber);
 
@@ -204,8 +142,8 @@ public class Proposer extends Acceptor {
         }
     }
 
-
-    private void sendAcceptRequest(Proposal proposal) {
+    @Override
+    public void sendAcceptRequest(Proposal proposal) {
         /*
         If a proposer receives enough PROMISEs from a majority, it needs to set a value to its proposal
         - If any acceptors had sent a value and proposal number to the proposer, then proposer sets the value of its proposal to the **value associated with the highest proposal number** reported by the acceptors
@@ -224,12 +162,12 @@ public class Proposer extends Acceptor {
             }
         }
 
-        Message acceptRequest = Message.acceptRequest(proposal.getProposalNumber(), memberID, proposal.value);
+        Message acceptRequest = Message.acceptRequest(proposal.getProposalNumber(), config.memberID, proposal.value);
 
-        // send to all acceptors in the network:
-        for (MemberConfig.MemberInfo memberInfo : this.config.network.values()) {
+        // send to all acceptors in the networkInfo:
+        for (MemberConfig.MemberInfo memberInfo : this.config.networkInfo.values()) {
             if (memberInfo.isAcceptor) {
-                network.sendMessage(memberInfo.address, memberInfo.port, acceptRequest)
+                config.networkTools.sendMessage(memberInfo.address, memberInfo.port, acceptRequest)
                         .thenAccept(this::handleAcceptReqResponse)
                         .exceptionally(ex -> {
                             if (ex.getCause() instanceof java.net.SocketTimeoutException) {
@@ -252,7 +190,8 @@ public class Proposer extends Acceptor {
         }
     }
 
-    private void handleAcceptReqResponse(Message response) {
+    @Override
+    public void handleAcceptReqResponse(Message response) {
         int proposalNumber = response.proposalNumber;
         Proposal proposal = activeProposals.get(proposalNumber);
 
@@ -302,12 +241,13 @@ public class Proposer extends Acceptor {
         }
     }
 
-    private void sendLearn(Proposal proposal) {
-        Message learn = Message.learn(proposal.getProposalNumber(), memberID, proposal.value);
-        // send to all acceptors in network:
-        for (MemberConfig.MemberInfo memberInfo : this.config.network.values()) {
+    @Override
+    public void sendLearn(Proposal proposal) {
+        Message learn = Message.learn(proposal.getProposalNumber(), config.memberID, proposal.value);
+        // send to all acceptors in networkInfo:
+        for (MemberConfig.MemberInfo memberInfo : this.config.networkInfo.values()) {
             if (memberInfo.isAcceptor) {
-                network.sendMessage(memberInfo.address, memberInfo.port, learn)
+                config.networkTools.sendMessage(memberInfo.address, memberInfo.port, learn)
                         .thenAccept(response -> {
                             if (response.type.equals("ACK")) {
                                 System.out.println("Received ACK from " + response.senderID
@@ -334,12 +274,7 @@ public class Proposer extends Acceptor {
         }
     }
 
-
-    @Override
-    public void start() {
-        if (this.config.isAcceptor) {
-            super.start();
-        }
+    public void propose() {
 
         System.out.println("Performing proposer role");
 
@@ -358,10 +293,10 @@ public class Proposer extends Acceptor {
                             System.out.println("Proposing member " + value);
                         } else {
                             System.out.println("Proposing self");
-                            this.preferredLeader = memberID;
+                            this.preferredLeader = config.memberID;
                         }
-                        // send proposal to all nodes in network:
-                        sendPrepare();
+                        // send proposal to all nodes in networkInfo:
+                        sendPrepareRequest();
                     } else if (command.equals("EXIT")) {
                         System.out.println("Shutting down...");
                         shutdown();
@@ -378,9 +313,7 @@ public class Proposer extends Acceptor {
         });
     }
 
-    @Override
     public void shutdown() {
-        super.shutdown();
         executor.shutdownNow(); // shutdown executor
         scheduler.shutdownNow(); // shutdown scheduler
         System.out.println("Shutdown complete.");

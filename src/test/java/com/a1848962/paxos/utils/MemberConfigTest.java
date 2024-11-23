@@ -26,11 +26,11 @@ class MemberConfigTest {
         // test for member with no specific overrides
         MemberConfig config = new MemberConfig("M4");
 
-        assertEquals(5001, config.network.get("M1").port, "M1 port should be 5001");
-        assertEquals("localhost", config.network.get("M1").address, "M1 address should be localhost");
-        assertEquals(5009, config.network.get("M9").port, "M9 port should be 5009");
-        assertEquals("localhost", config.network.get("M1").address, "M9 address should be localhost");
-        assertNull(config.network.get("M4"), "Self should not be in network map");
+        assertEquals(5001, config.networkInfo.get("M1").port, "M1 port should be 5001");
+        assertEquals("localhost", config.networkInfo.get("M1").address, "M1 address should be localhost");
+        assertEquals(5009, config.networkInfo.get("M9").port, "M9 port should be 5009");
+        assertEquals("localhost", config.networkInfo.get("M1").address, "M9 address should be localhost");
+        assertNull(config.networkInfo.get("M4"), "Self should not be in networkInfo map");
     }
 
     @Test
@@ -65,7 +65,7 @@ class MemberConfigTest {
     void testToString() {
         MemberConfig config = new MemberConfig("M4");
 
-        String expectedString = "MemberConfig{id=M4, address='localhost', port=5004, isProposer=false, isAcceptor=true, isLearner=true, maxDelay=100, reliability=1.0, chanceSheoak=0.0, chanceCoorong=0.0}";
+        String expectedString = "MemberConfig{memberID=M4, address='localhost', port=5004, isProposer=false, isAcceptor=true, isLearner=true, maxDelay=100, reliability=1.0, chanceSheoak=0.0, chanceCoorong=0.0}";
         String actualString = config.toString();
 
         assertEquals(expectedString, actualString, "toString method should return the expected string");

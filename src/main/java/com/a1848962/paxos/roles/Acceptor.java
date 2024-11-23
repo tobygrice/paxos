@@ -7,8 +7,14 @@ import java.io.IOException;
 import java.io.OutputStream;
 import java.util.concurrent.atomic.AtomicInteger;
 
-// all acceptors are learners
-public class Acceptor extends Learner {
+interface AcceptorRole {
+    void handlePrepareRequest(Message message, OutputStream socketOut);
+    void handleAcceptRequest(Message message, OutputStream socketOut);
+}
+
+public class Acceptor implements AcceptorRole {
+    private final MemberConfig config;
+
     // thread-safe data types to store the highest promised proposal, highest accepted proposal and its associated value
     private final AtomicInteger highestPromise = new AtomicInteger();
     private final StringBuilder highestPromiseProposerID = new StringBuilder("M0"); // Initialized to "M0" as default
@@ -17,34 +23,11 @@ public class Acceptor extends Learner {
     protected final Object promiseLock = new Object(); // lock to ensure atomicity
 
     public Acceptor(MemberConfig config) {
-        super(config);
+        this.config = config;
     }
 
     @Override
-    public void handleIncomingMessage(Message message, OutputStream socketOut) {
-        switch (message.type) {
-            case "PROMISE":
-            case "ACCEPT":
-            case "REJECT":
-                // message for proposer node
-                break;
-            case "PREPARE_REQ":
-                System.out.println("ACCEPTOR: Incoming PREPARE_REQ message from " + message.senderID);
-                handlePrepareRequest(message, socketOut);
-                break;
-            case "ACCEPT_REQ":
-                System.out.println("ACCEPTOR: Incoming ACCEPT_REQ message from " + message.senderID);
-                handleAcceptRequest(message, socketOut);
-                break;
-            case "LEARN":
-                super.handleIncomingMessage(message, socketOut);
-                break;
-            default:
-                System.out.println("ACCEPTOR: Incoming incompatible message type: " + message.type);
-        }
-    }
-
-    private void handlePrepareRequest(Message message, OutputStream socketOut) {
+    public void handlePrepareRequest(Message message, OutputStream socketOut) {
         /* If n is greater than any previous proposal number seen by the acceptor:
             - Acceptor returns a promise to ignore all future proposals with a number < n
             - If the acceptor accepted a proposal at some point in the past, it must include the previous proposal number + value in its response to the proposer
@@ -83,8 +66,8 @@ public class Acceptor extends Learner {
         }
     }
 
-
-    private void handleAcceptRequest(Message message, OutputStream socketOut) {
+    @Override
+    public void handleAcceptRequest(Message message, OutputStream socketOut) {
         /*
         If an acceptor receives an Accept Request message for a proposal n, it must accept (send ***accept-ok***)
         - **if and only if** it has not already promised to only consider proposals having an identifier greater than n -> also implies acceptor considers proposer LEADER.
@@ -105,7 +88,7 @@ public class Acceptor extends Learner {
                 acceptedValue.setLength(0);
                 acceptedValue.append(message.value);
 
-                response = Message.accept(message.proposalNumber, memberID, message.value);
+                response = Message.accept(message.proposalNumber, config.memberID, message.value);
                 System.out.println("Sending ACCEPT for proposal " + message.proposalNumber);
             } else if (highestPromise.get() == message.proposalNumber && incomingProposerID < currentPromisedProposerID) {
                 // same proposalID and is the original proposer, or incoming proposer has a lower memberID (higher priority)
@@ -115,7 +98,7 @@ public class Acceptor extends Learner {
                 acceptedValue.setLength(0);
                 acceptedValue.append(message.value);
 
-                response = Message.accept(message.proposalNumber, memberID, message.value);
+                response = Message.accept(message.proposalNumber, config.memberID, message.value);
                 System.out.println("Sending ACCEPT for proposal " + message.proposalNumber + " from higher priority proposer " + message.senderID);
             } else {
                 // either proposalNumber < highestPromise or same proposalNumber but higher proposerID
@@ -131,10 +114,10 @@ public class Acceptor extends Learner {
         if (acceptedValue.length() > 0) {
             System.out.println("Sending PROMISE for proposal " + message.proposalNumber
                     + " with previously accepted value '" + acceptedValue + "' from proposal " + previousHighestPromise);
-            return Message.promise(message.proposalNumber, memberID, previousHighestPromise, acceptedValue.toString());
+            return Message.promise(message.proposalNumber, config.memberID, previousHighestPromise, acceptedValue.toString());
         } else {
             System.out.println("Sending PROMISE for proposal " + message.proposalNumber + " with no previously accepted value");
-            return Message.promise(message.proposalNumber, memberID);
+            return Message.promise(message.proposalNumber, config.memberID);
         }
     }
 
@@ -144,13 +127,13 @@ public class Acceptor extends Learner {
                     + " for proposal " + message.proposalNumber
                     + " due to already promising proposal " + highestPromise.get()
                     + ". Including previously accepted value '" + acceptedValue + "'");
-            return Message.reject(message.proposalNumber, memberID, highestPromise.get(), acceptedValue.toString());
+            return Message.reject(message.proposalNumber, config.memberID, highestPromise.get(), acceptedValue.toString());
         } else {
             System.out.println("Rejecting " + message.type + " from " + message.senderID
                     + " for proposal " + message.proposalNumber
                     + " due to already promising proposal " + highestPromise.get()
                     + ". No previously accepted value to include.");
-            return Message.reject(message.proposalNumber, memberID, highestPromise.get());
+            return Message.reject(message.proposalNumber, config.memberID, highestPromise.get());
         }
     }
 
@@ -162,14 +145,5 @@ public class Acceptor extends Learner {
             System.out.println("Error writing response: " + ex.getMessage());
             throw new RuntimeException(ex);
         }
-    }
-
-    @Override
-    public void start() {
-        if (this.config.isLearner) {
-            super.start();
-        }
-
-        System.out.println("Performing acceptor role");
     }
 }
