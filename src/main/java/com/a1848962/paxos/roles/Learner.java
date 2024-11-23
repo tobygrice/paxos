@@ -34,7 +34,8 @@ public class Learner extends Member {
         System.out.println("Handling LEARN message from " + message.senderID);
         if (message.value != null) {
             learnedValue = message.value;
-            System.out.println("Learned " + learnedValue + " from " + message.senderID);
+            System.out.println("From " + message.senderID + ":");
+            System.out.println("Learned elected councillor: " + learnedValue);
             sendAck(socketOut);
         } else {
             System.out.println("Learner node instructed to learn null value by " + message.senderID);

@@ -83,7 +83,7 @@ public class MemberConfig {
         String[] members = membersStr.split(",");
         for (String m : members) {
             String thisMember = m.trim();
-            if (!thisMember.equalsIgnoreCase(memberID)) {
+            // if (!thisMember.equalsIgnoreCase(memberID)) {
                 boolean tempLearner = false, tempAcceptor = false, tempProposer = false;
                 if (Boolean.parseBoolean(properties.getProperty(thisMember + ".proposer", properties.getProperty("proposer.default")))) {
                     tempProposer = true;
@@ -97,7 +97,7 @@ public class MemberConfig {
                 String tempAddress = properties.getProperty(thisMember + ".address", properties.getProperty("address.default"));
                 int tempPort = Integer.parseInt(thisMember.substring(1)) + Integer.parseInt(properties.getProperty(thisMember + ".base_port", properties.getProperty("base_port.default")));
                 this.network.put(thisMember, new MemberInfo(thisMember, tempLearner, tempAcceptor, tempProposer, tempAddress, tempPort));
-            }
+            // }
         }
 
         // parse properties

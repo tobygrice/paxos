@@ -4,6 +4,7 @@ import com.a1848962.paxos.network.*;
 
 import java.util.Collection;
 import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 
 // this util class was written with the assistance of AI
@@ -20,8 +21,8 @@ public class Proposal {
     private final ConcurrentHashMap<String, Message> accepts = new ConcurrentHashMap<>();
     private final AtomicInteger rejectCount = new AtomicInteger(0);
 
-    public volatile boolean phaseOneCompleted = false;
-    private volatile boolean phaseTwoCompleted = false;
+    private final AtomicBoolean phaseOneCompleted = new AtomicBoolean(false);
+    private final AtomicBoolean phaseTwoCompleted = new AtomicBoolean(false);
 
     /**
      * Object representing a proposal.
@@ -67,11 +68,20 @@ public class Proposal {
         return rejectCount.get();
     }
 
+    public boolean isPhaseOneCompleted() {
+        return phaseOneCompleted.get();
+    }
+
     public boolean isCompleted() {
-        return phaseOneCompleted && phaseTwoCompleted;
+        return phaseTwoCompleted.get();
+    }
+
+    public void markPhaseOneCompleted() {
+        phaseOneCompleted.set(true);
     }
 
     public void markCompleted() {
-        phaseOneCompleted = phaseTwoCompleted = true;
+        phaseOneCompleted.set(true);
+        phaseTwoCompleted.set(true);
     }
 }

@@ -22,13 +22,15 @@ public class Proposer extends Acceptor {
     private final ConcurrentHashMap<Integer, Proposal> activeProposals = new ConcurrentHashMap<>();
     private final int majority;
 
+    private String preferredLeader;
+
     private final ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(2);
 
     private final ExecutorService executor = Executors.newCachedThreadPool();
 
     public Proposer(MemberConfig config) {
         super(config);
-        this.network = new Network(config.port, this);
+        this.preferredLeader = memberID;
         this.currentlySheoak = false;
         this.majority = (config.network.size() / 2) + 1; // calculate majority required for consensus
     }
@@ -82,7 +84,7 @@ public class Proposer extends Acceptor {
                 if (proposal == null) {
                     System.out.println("PROPOSER: Received incoming REJECT from " + message.senderID + " for unknown proposal number " + proposalNumber);
                 } else {
-                    if (!proposal.phaseOneCompleted) {
+                    if (!proposal.isPhaseOneCompleted()) {
                         // proposal is active and phase one is incomplete, REJECT is in response to prepare request
                         handlePrepareResponse(message);
                     } else if (!proposal.isCompleted()) {
@@ -119,8 +121,15 @@ public class Proposer extends Acceptor {
                 network.sendMessage(memberInfo.address, memberInfo.port, prepare)
                         .thenAccept(this::handlePrepareResponse)
                         .exceptionally(ex -> {
-                            System.out.println("Failed to send PREPARE_REQ to " + memberInfo.id +
-                                    ", incrementing reject count" + ex.getMessage());
+                            if (ex.getCause().getCause() instanceof java.net.SocketTimeoutException) {
+                                System.out.println("No response to PREPARE_REQ received from " + memberInfo.id
+                                        + " (timed out) for proposal " + proposal.getProposalNumber()
+                                        + ", incrementing reject count.");
+                            } else {
+                                System.out.println("Failed to send PREPARE_REQ to " + memberInfo.id
+                                        + " for proposal " + proposal.getProposalNumber()
+                                        + ", incrementing reject count - " + ex.getMessage());
+                            }
                             proposal.incrementRejectCount();
                             checkPhaseOneMajority(proposal);
                             return null;
@@ -178,19 +187,19 @@ public class Proposer extends Acceptor {
      * @param proposal The Proposal object to check.
      */
     private void checkPhaseOneMajority(Proposal proposal) {
-        if (proposal.phaseOneCompleted) {
+        if (proposal.isPhaseOneCompleted()) {
             // majority has already been reached and algorithm has progressed, just return
             return;
         }
 
         if (proposal.getPromiseCount() >= majority) {
             System.out.println("Majority PROMISEs received for proposal " + proposal.getProposalNumber() + ". Sending ACCEPT_REQUEST.");
-            proposal.phaseOneCompleted = true;
+            proposal.markPhaseOneCompleted();
             proposal.resetRejectCount(); // reset for next phase
             sendAcceptRequest(proposal);
         } else if (proposal.getRejectCount() >= majority) {
-            System.out.println("Majority REJECTs received for proposal " + proposal.getProposalNumber() + " in phase 1. Allowing scheduler to retry after timeout.");
-            proposal.phaseOneCompleted = true;
+            System.out.println("Majority REJECTs received for proposal " + proposal.getProposalNumber() + " in phase one. Allowing scheduler to retry after timeout.");
+            proposal.markPhaseOneCompleted();
             // allow scheduler to retry prepare phase after proposal times out, to prevent livelock
         }
     }
@@ -206,7 +215,7 @@ public class Proposer extends Acceptor {
 
         // assign value to proposal:
         int largestAcceptedProposal = -1;
-        proposal.value = memberID; // vote for self by default
+        proposal.value = preferredLeader; // use preferred value (self, unless otherwise specified by user)
         for (Message response : proposal.getPromises()) {
             // if any node has previously accepted a proposal, use that previously accepted value
             if ((response.acceptedValue != null) && (response.highestPromisedProposal > largestAcceptedProposal)) {
@@ -223,6 +232,15 @@ public class Proposer extends Acceptor {
                 network.sendMessage(memberInfo.address, memberInfo.port, acceptRequest)
                         .thenAccept(this::handleAcceptReqResponse)
                         .exceptionally(ex -> {
+                            if (ex.getCause() instanceof java.net.SocketTimeoutException) {
+                                System.out.println("No response to ACCEPT_REQ received from " + memberInfo.id
+                                        + " (timed out) for proposal " + proposal.getProposalNumber()
+                                        + ", incrementing reject count.");
+                            } else {
+                                System.out.println("Failed to send ACCEPT_REQ to " + memberInfo.id
+                                        + " for proposal " + proposal.getProposalNumber()
+                                        + ", incrementing reject count.");
+                            }
                             System.out.println("Failed to send ACCEPT_REQ to " + memberInfo.id
                                     + " for proposal " + proposal.getProposalNumber() + ". Incrementing reject count. "
                                     + ex.getMessage());
@@ -249,7 +267,6 @@ public class Proposer extends Acceptor {
             System.out.println("Received ACCEPT from " + response.senderID + " for proposal " + proposalNumber);
             checkPhaseTwoMajority(proposal);
         } else if (response.type.equalsIgnoreCase("REJECT")) {
-
             proposal.incrementRejectCount();
             // if node is rejecting because it has accepted a proposal with a greater ID, update proposal counter to
             // match to ensure next prepare message will have a current ID:
@@ -259,7 +276,7 @@ public class Proposer extends Acceptor {
                 proposalCounter.set(response.highestPromisedProposal);
             } else {
                 System.out.println("Received REJECT from " + response.senderID + " for proposal " + proposalNumber
-                        + " with lower or equal promised ID: " + response.highestPromisedProposal);
+                        + " with promised ID: " + response.highestPromisedProposal);
             }
             checkPhaseTwoMajority(proposal);
         } else {
@@ -276,14 +293,12 @@ public class Proposer extends Acceptor {
         if (proposal.getAcceptCount() >= majority) {
             System.out.println("Majority ACCEPTs received for proposal " + proposal.getProposalNumber()
                     + ". Sending LEARN with value " + proposal.value);
-            sendLearn(proposal);
             proposal.markCompleted(); // to prevent scheduler from retrying
+            sendLearn(proposal);
             activeProposals.remove(proposal.getProposalNumber());
         } else if (proposal.getRejectCount() >= majority) {
-            System.out.println("Majority REJECTS received for proposal in phase two" + proposal.getProposalNumber() + ". Retrying.");
-            proposal.markCompleted(); // to prevent scheduler from retrying
-            activeProposals.remove(proposal.getProposalNumber());
-            sendPrepare();
+            System.out.println("Majority REJECTS received for proposal " + proposal.getProposalNumber() + " in phase two. Retrying.");
+            // wait for scheduler to retry
         }
     }
 
@@ -306,7 +321,13 @@ public class Proposer extends Acceptor {
                             }
                         })
                         .exceptionally(ex -> {
-                            System.out.println("Failed to send LEARN to " + memberInfo.id + ex.getMessage());
+                            if (ex.getCause() instanceof java.net.SocketTimeoutException) {
+                                System.out.println("No response to LEARN received from " + memberInfo.id
+                                        + " (timed out) for proposal " + proposal.getProposalNumber());
+                            } else {
+                                System.out.println("Failed to send LEARN to " + memberInfo.id
+                                        + " for proposal " + proposal.getProposalNumber());
+                            }
                             return null;
                         });
             }
@@ -328,11 +349,20 @@ public class Proposer extends Acceptor {
             String line;
             try {
                 while ((line = reader.readLine()) != null) {
-                    String command = line.trim().toLowerCase();
-                    if (command.equals("propose")) {
-                        // send proposal to all nodes in network
+                    String command = line.trim().toUpperCase();
+                    if (command.startsWith("PROPOSE")) {
+                        String[] parts = command.split(" ");
+                        if (parts.length > 1) {
+                            String value = parts[1]; // second part is the councillor to propose
+                            this.preferredLeader = value.toUpperCase();
+                            System.out.println("Proposing member " + value);
+                        } else {
+                            System.out.println("Proposing self");
+                            this.preferredLeader = memberID;
+                        }
+                        // send proposal to all nodes in network:
                         sendPrepare();
-                    } else if (command.equals("exit")) {
+                    } else if (command.equals("EXIT")) {
                         System.out.println("Shutting down...");
                         shutdown();
                     } else {
