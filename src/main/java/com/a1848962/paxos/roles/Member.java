@@ -6,8 +6,6 @@ import com.a1848962.paxos.utils.*;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.util.Random;
-import java.util.concurrent.Executors;
-import java.util.concurrent.ScheduledExecutorService;
 
 /* class to simulate a member in the network. */
 public abstract class Member implements Network.PaxosHandler {
@@ -43,27 +41,23 @@ public abstract class Member implements Network.PaxosHandler {
         }
     }
 
-    public boolean sendAck(OutputStream socketOut) {
+    public void sendAck(OutputStream socketOut) {
         Message ack = Message.ack(this.memberID);
         try {
             socketOut.write(ack.marshall().getBytes());
             socketOut.flush();
-            return true;
         } catch (IOException ex) {
             System.out.println("Error sending ACK - " + ex.getMessage());
-            return false;
         }
     }
 
-    public boolean sendNack(OutputStream socketOut) {
+    public void sendNack(OutputStream socketOut) {
         Message nack = Message.nack(this.memberID);
         try {
             socketOut.write(nack.marshall().getBytes());
             socketOut.flush();
-            return true;
         } catch (IOException ex) {
             System.out.println("Error sending NACK - " + ex.getMessage());
-            return false;
         }
     }
 
