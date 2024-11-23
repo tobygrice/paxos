@@ -3,24 +3,22 @@ package com.a1848962.paxos.roles;
 import com.a1848962.paxos.network.*;
 import com.a1848962.paxos.utils.*;
 
+import java.io.IOException;
 import java.io.OutputStream;
 import java.util.Random;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 
 /* class to simulate a member in the network. */
 public abstract class Member implements Network.PaxosHandler {
     // declare member variables
-    protected String memberID;
-    protected MemberConfig config;
-    protected Network network;
+    protected volatile String memberID;
+    protected volatile MemberConfig config;
+    protected volatile Network network;
 
-    protected String learnedValue;
+    protected volatile String learnedValue;
 
     // declare utility member variables
-    protected static final Logger logger = LoggerFactory.getLogger(Member.class);
     protected final Random random = new Random();
 
     public abstract void start();
@@ -28,7 +26,6 @@ public abstract class Member implements Network.PaxosHandler {
     public Member(MemberConfig config) {
         this.memberID = config.id;
         this.config = config;
-        logger.info("Initialised member {}", memberID);
     }
 
     @Override
@@ -41,9 +38,32 @@ public abstract class Member implements Network.PaxosHandler {
         try {
             // shutdown network
             if (network != null) network.shutdown();
-            logger.info("{}: Member shutdown complete.", memberID);
-        } catch (Exception e) {
-            logger.error("{}: Error during shutdown - {}", memberID, e.getMessage());
+        } catch (Exception ex) {
+            System.out.println("Error during shutdown - " + ex.getMessage());
+        }
+    }
+
+    public boolean sendAck(OutputStream socketOut) {
+        Message ack = Message.ack(this.memberID);
+        try {
+            socketOut.write(ack.marshall().getBytes());
+            socketOut.flush();
+            return true;
+        } catch (IOException ex) {
+            System.out.println("Error sending ACK - " + ex.getMessage());
+            return false;
+        }
+    }
+
+    public boolean sendNack(OutputStream socketOut) {
+        Message nack = Message.nack(this.memberID);
+        try {
+            socketOut.write(nack.marshall().getBytes());
+            socketOut.flush();
+            return true;
+        } catch (IOException ex) {
+            System.out.println("Error sending NACK - " + ex.getMessage());
+            return false;
         }
     }
 
@@ -61,13 +81,10 @@ public abstract class Member implements Network.PaxosHandler {
         // assign subclass based on role:
         if (config.isProposer) {
             member = new Proposer(config);
-            logger.info("{} assigned Proposer class", config.id);
         } else if (config.isAcceptor) {
             member = new Acceptor(config);
-            logger.info("{} assigned Acceptor class", config.id);
         } else {
             member = new Learner(config);
-            logger.info("{} assigned Learner class", config.id);
         }
 
         member.start(); // polymorphic call to start method

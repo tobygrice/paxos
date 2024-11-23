@@ -15,18 +15,13 @@ In order of increasing severity:
 
 <configuration>
 
-    <!-- Define a property for the log file path -->
+    <!-- Define a property for the log file path with node identifier -->
     <property name="LOG_FILE" value="logs/app.log"/>
 
     <!-- File Appender Configuration -->
     <appender name="FILE" class="ch.qos.logback.core.FileAppender">
-        <!-- Log file location -->
         <file>${LOG_FILE}</file>
-
-        <!-- Overwrite the log file on each application start -->
-        <append>false</append>
-
-        <!-- Encoder defines the log message format -->
+        <append>true</append>
         <encoder>
             <pattern>%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n</pattern>
         </encoder>
@@ -34,20 +29,14 @@ In order of increasing severity:
 
     <!-- Asynchronous Appender Configuration -->
     <appender name="ASYNC_FILE" class="ch.qos.logback.classic.AsyncAppender">
-        <!-- Reference the FILE appender -->
         <appender-ref ref="FILE" />
-
-        <!-- Optional: Configure queue size and discarding threshold -->
         <queueSize>500</queueSize>
         <discardingThreshold>0</discardingThreshold>
-
-        <!-- Optionally, set never block to true to prevent blocking the main thread -->
         <neverBlock>true</neverBlock>
     </appender>
 
     <!-- Root Logger Configuration -->
     <root level="TRACE">
-        <!-- Attach the asynchronous appender to the root logger -->
         <appender-ref ref="ASYNC_FILE" />
     </root>
 

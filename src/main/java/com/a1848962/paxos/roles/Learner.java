@@ -12,6 +12,7 @@ public class Learner extends Member {
 
     public Learner(MemberConfig config) {
         super(config);
+        this.network = new Network(config.port, this);
     }
 
     @Override
@@ -21,14 +22,23 @@ public class Learner extends Member {
 
     @Override
     public void handleIncomingMessage(Message message, OutputStream socketOut) {
+        System.out.println("LEARNER: Incoming " + message.type + " message from " + message.senderID);
         if (message.type.equals("LEARN")) {
             handleLearn(message, socketOut);
         } else {
-            logger.warn("{}: Learner node received message type it cannot handle: {}", memberID, message.type);
+            System.out.println("Received incompatible message type: " + message.type);
         }
     }
 
     private void handleLearn(Message message, OutputStream socketOut) {
+        System.out.println("Handling LEARN message from " + message.senderID);
+        if (message.value != null) {
+            learnedValue = message.value;
+            System.out.println("Learned " + learnedValue + " from " + message.senderID);
+            sendAck(socketOut);
+        } else {
+            System.out.println("Learner node instructed to learn null value by " + message.senderID);
+            sendNack(socketOut);
+        }
     }
-
 }

@@ -8,6 +8,7 @@ import java.net.Socket;
 import java.net.ServerSocket;
 import java.util.Random;
 import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -99,6 +100,7 @@ public class Network {
      */
     public CompletableFuture<Message> sendMessage(String address, int port, Message message) {
         return CompletableFuture.supplyAsync(() -> {
+            /*
             // simulate network delay up to MAX_DELAY length
             try {
                 int delay = random.nextInt(MAX_DELAY);
@@ -113,6 +115,7 @@ public class Network {
                 logger.warn("Message lost: {}", message);
                 throw new RuntimeException("Message lost");
             }
+            */
 
             try (Socket socket = new Socket(address, port)) {
                 // send message
