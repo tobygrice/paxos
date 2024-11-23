@@ -82,20 +82,22 @@ public class MemberConfig {
         this.network = new HashMap<>();
         String[] members = membersStr.split(",");
         for (String m : members) {
-            if (m.equals(memberID)) continue; // do not add self to network hashmap
-            boolean tempLearner = false, tempAcceptor = false, tempProposer = false;
-            if (Boolean.parseBoolean(properties.getProperty(m + ".proposer", properties.getProperty("proposer.default")))) {
-                tempProposer = true;
+            String thisMember = m.trim();
+            if (!thisMember.equalsIgnoreCase(memberID)) {
+                boolean tempLearner = false, tempAcceptor = false, tempProposer = false;
+                if (Boolean.parseBoolean(properties.getProperty(thisMember + ".proposer", properties.getProperty("proposer.default")))) {
+                    tempProposer = true;
+                }
+                if (Boolean.parseBoolean(properties.getProperty(thisMember + ".acceptor", properties.getProperty("acceptor.default")))) {
+                    tempAcceptor = true;
+                }
+                if (Boolean.parseBoolean(properties.getProperty(thisMember + ".learner", properties.getProperty("learner.default")))) {
+                    tempLearner = true;
+                }
+                String tempAddress = properties.getProperty(thisMember + ".address", properties.getProperty("address.default"));
+                int tempPort = Integer.parseInt(thisMember.substring(1)) + Integer.parseInt(properties.getProperty(thisMember + ".base_port", properties.getProperty("base_port.default")));
+                this.network.put(thisMember, new MemberInfo(thisMember, tempLearner, tempAcceptor, tempProposer, tempAddress, tempPort));
             }
-            if (Boolean.parseBoolean(properties.getProperty(m + ".acceptor", properties.getProperty("acceptor.default")))) {
-                tempAcceptor = true;
-            }
-            if (Boolean.parseBoolean(properties.getProperty(m + ".learner", properties.getProperty("learner.default")))) {
-                tempLearner = true;
-            }
-            String tempAddress = properties.getProperty(m + ".address", properties.getProperty("address.default"));
-            int tempPort = Integer.parseInt(m.substring(1)) + Integer.parseInt(properties.getProperty(m + ".base_port", properties.getProperty("base_port.default")));
-            this.network.put(m, new MemberInfo(m, tempLearner, tempAcceptor, tempProposer, tempAddress, tempPort));
         }
 
         // parse properties

@@ -80,11 +80,11 @@ public class Message {
      * Creates an ACCEPT message.
      *
      * @param proposalCounter   The proposal number that was accepted.
-     * @param value             The value that was accepted.
      * @param memberID          The ID of the member sending the message.
+     * @param value             The value that was accepted.
      * @return An ACCEPT type Message.
      */
-    public static Message accept(int proposalCounter, String value, String memberID) {
+    public static Message accept(int proposalCounter, String memberID, String value) {
         Message message = new Message();
         message.type = "ACCEPT";
         message.proposalNumber = proposalCounter;

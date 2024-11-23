@@ -35,7 +35,6 @@ public class Proposer extends Acceptor {
 
     @Override
     public void handleIncomingMessage(Message message, OutputStream socketOut) {
-        System.out.println("PROPOSER: Incoming " + message.type + " message from " + message.senderID);
 
         // simulate chance for member to go camping
         if (config.chanceCoorong > random.nextDouble()) {
@@ -81,7 +80,7 @@ public class Proposer extends Acceptor {
                 int proposalNumber = message.proposalNumber;
                 Proposal proposal = activeProposals.get(proposalNumber);
                 if (proposal == null) {
-                    System.out.println("Received incoming REJECT message for unknown proposal number " + proposalNumber);
+                    System.out.println("PROPOSER: Received incoming REJECT from " + message.senderID + " for unknown proposal number " + proposalNumber);
                 } else {
                     if (!proposal.phaseOneCompleted) {
                         // proposal is active and phase one is incomplete, REJECT is in response to prepare request
@@ -96,11 +95,13 @@ public class Proposer extends Acceptor {
                 // message is for acceptors (in this assignment, all proposers will also be acceptors & learners so
                 // these role checking if-statements are redundant, I have included them for robustness)
                 if (this.config.isAcceptor) super.handleIncomingMessage(message, socketOut);
+                break;
             case "LEARN":
                 // message is for learners
                 if (this.config.isLearner) super.handleIncomingMessage(message, socketOut);
+                break;
             default:
-                System.out.println("Received incompatible message type: " + message.type);
+                System.out.println("PROPOSER: incoming incompatible message type: " + message.type);
         }
     }
 
@@ -143,13 +144,12 @@ public class Proposer extends Acceptor {
      * @param response       The response Message.
      */
     private void handlePrepareResponse(Message response) {
-        System.out.println("Handling PREPARE_REQ response from " + memberID);
-
         int proposalNumber = response.proposalNumber;
         Proposal proposal = activeProposals.get(proposalNumber);
 
         if (proposal == null) {
-            System.out.println("Received " + response.type + " response for unknown proposal number " + proposalNumber);
+            System.out.println("Handle PREPARE_REQ method received " + response.type + " response from "
+                    + response.senderID + " for unknown proposal number " + proposalNumber);
             return;
         }
 
@@ -235,13 +235,12 @@ public class Proposer extends Acceptor {
     }
 
     private void handleAcceptReqResponse(Message response) {
-        System.out.println("Handling ACCEPT_REQ response from " + memberID);
-
         int proposalNumber = response.proposalNumber;
         Proposal proposal = activeProposals.get(proposalNumber);
 
         if (proposal == null) {
-            System.out.println("Received " + response.type + " response for unknown proposal number " + proposalNumber);
+            System.out.println("Handle ACCEPT_REQ method received " + response.type + " response from "
+                    + response.senderID + " for unknown proposal number " + proposalNumber);
             return;
         }
 
@@ -260,7 +259,7 @@ public class Proposer extends Acceptor {
                 proposalCounter.set(response.highestPromisedProposal);
             } else {
                 System.out.println("Received REJECT from " + response.senderID + " for proposal " + proposalNumber
-                        + " with lower promised value.");
+                        + " with lower or equal promised ID: " + response.highestPromisedProposal);
             }
             checkPhaseTwoMajority(proposal);
         } else {
@@ -289,7 +288,7 @@ public class Proposer extends Acceptor {
     }
 
     private void sendLearn(Proposal proposal) {
-        Message learn = Message.learn(proposal.getProposalNumber(), proposal.value, memberID);
+        Message learn = Message.learn(proposal.getProposalNumber(), memberID, proposal.value);
         // send to all acceptors in network:
         for (MemberConfig.MemberInfo memberInfo : this.config.network.values()) {
             if (memberInfo.isAcceptor) {

@@ -20,27 +20,25 @@ public class Acceptor extends Learner {
 
     @Override
     public void handleIncomingMessage(Message message, OutputStream socketOut) {
-        System.out.println("ACCEPTOR: Incoming " + message.type + " message from " + message.senderID);
         switch (message.type) {
             case "PROMISE":
             case "ACCEPT":
             case "REJECT":
-                // message for proposer node, send NACK
-                System.out.println("Acceptor node received incompatible " + message.type +
-                        " message from " + message.senderID + ". Sending NACK.");
-                sendNack(socketOut);
+                // message for proposer node
                 break;
             case "PREPARE_REQ":
+                System.out.println("ACCEPTOR: Incoming PREPARE_REQ message from " + message.senderID);
                 handlePrepareRequest(message, socketOut);
                 break;
             case "ACCEPT_REQ":
+                System.out.println("ACCEPTOR: Incoming ACCEPT_REQ message from " + message.senderID);
                 handleAcceptRequest(message, socketOut);
                 break;
             case "LEARN":
                 super.handleIncomingMessage(message, socketOut);
                 break;
             default:
-                System.out.println("Received incompatible message type: " + message.type);
+                System.out.println("ACCEPTOR: Incoming incompatible message type: " + message.type);
         }
     }
 
@@ -101,7 +99,7 @@ public class Acceptor extends Learner {
          */
 
         Message response;
-        if (highestPromise.get() < message.proposalNumber) {
+        if (highestPromise.get() <= message.proposalNumber) {
             // acceptor has not promised to ignore, respond with accept
             // overwrite highest promised ID and accepted value:
             this.highestPromise.set(message.proposalNumber);

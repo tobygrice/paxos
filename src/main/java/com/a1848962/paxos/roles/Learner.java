@@ -22,8 +22,8 @@ public class Learner extends Member {
 
     @Override
     public void handleIncomingMessage(Message message, OutputStream socketOut) {
-        System.out.println("LEARNER: Incoming " + message.type + " message from " + message.senderID);
         if (message.type.equals("LEARN")) {
+            System.out.println("LEARNER: Incoming LEARN message from " + message.senderID);
             handleLearn(message, socketOut);
         } else {
             System.out.println("Received incompatible message type: " + message.type);
