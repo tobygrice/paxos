@@ -12,8 +12,7 @@ interface AcceptorRole {
     void handleAcceptRequest(Message message, OutputStream socketOut);
 }
 
-public class Acceptor implements AcceptorRole {
-    private final MemberConfig config;
+public class Acceptor extends Member implements AcceptorRole {
 
     // thread-safe data types to store the highest promised proposal, highest accepted proposal and its associated value
     private final AtomicInteger highestPromise = new AtomicInteger();
@@ -23,7 +22,7 @@ public class Acceptor implements AcceptorRole {
     protected final Object promiseLock = new Object(); // lock to ensure atomicity
 
     public Acceptor(MemberConfig config) {
-        this.config = config;
+        super(config);
     }
 
     @Override

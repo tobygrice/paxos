@@ -7,27 +7,33 @@ import java.io.IOException;
 import java.io.OutputStream;
 
 interface LearnerRole {
+    String getLearnedValue();
     void handleLearn(Message message, OutputStream socketOut);
 }
 
 // All members are learners. For this assignment, all members are also acceptors,
 // but this is not a requirement of Paxos. Therefore, I have seperated the learner/acceptor
 // classes.
-public class Learner implements LearnerRole {
-    private final MemberConfig config;
+public class Learner extends Member implements LearnerRole {
 
-    private volatile String learnedValue;
+    private final StringBuffer learnedValue;
 
     public Learner(MemberConfig config) {
-        this.config = config;
+        super(config);
+        learnedValue = new StringBuffer();
     }
 
+    public String getLearnedValue() {
+        return learnedValue.toString();
+    }
+
+    @Override
     public void handleLearn(Message message, OutputStream socketOut) {
         System.out.println("Handling LEARN message from " + message.senderID);
         if (message.value != null) {
-            learnedValue = message.value;
-            System.out.println("From " + message.senderID + ":");
-            System.out.println("Learned elected councillor: " + learnedValue);
+            learnedValue.setLength(0);
+            learnedValue.append(message.value);
+            System.out.println("Learned elected councillor: " + getLearnedValue() + " from " + message.senderID);
             sendAck(socketOut);
         } else {
             System.out.println("Learner node instructed to learn null value by " + message.senderID);
@@ -35,7 +41,7 @@ public class Learner implements LearnerRole {
         }
     }
 
-    public void sendAck(OutputStream socketOut) {
+    private void sendAck(OutputStream socketOut) {
         Message ack = Message.ack(this.config.memberID);
         try {
             socketOut.write(ack.marshall().getBytes());
@@ -45,7 +51,7 @@ public class Learner implements LearnerRole {
         }
     }
 
-    public void sendNack(OutputStream socketOut) {
+    private void sendNack(OutputStream socketOut) {
         Message nack = Message.nack(this.config.memberID);
         try {
             socketOut.write(nack.marshall().getBytes());

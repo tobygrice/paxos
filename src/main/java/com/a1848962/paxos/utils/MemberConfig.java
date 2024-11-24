@@ -10,7 +10,6 @@ import java.util.HashMap;
 /* class to store member configuration values parsed from member.properties */
 public class MemberConfig {
     public volatile String memberID;
-    public volatile Network networkTools;
     public final String address;
     public final int port;
     public final boolean isLearner;
@@ -42,6 +41,19 @@ public class MemberConfig {
         }
     }
 
+    public static Properties getProperties() {
+        Properties properties = new Properties();
+        try (InputStream input = MemberConfig.class.getClassLoader().getResourceAsStream("member.properties")) {
+            if (input == null) {
+                throw new RuntimeException("member.properties not found in classpath.");
+            }
+            properties.load(input);
+        } catch (IOException e) {
+            throw new RuntimeException("Failed to load member.properties.", e);
+        }
+        return properties;
+    }
+
     // method to construct config object by parsing member.properties
     // this method partially written with the assistance of AI
     public MemberConfig(String memberID) {
@@ -50,15 +62,7 @@ public class MemberConfig {
             throw new IllegalArgumentException("Invalid memberID format. Expected format: positive integer preceded by 'M' (e.g., M1, M2).");
         }
 
-        Properties properties = new Properties();
-        try (InputStream input = getClass().getClassLoader().getResourceAsStream("member.properties")) {
-            if (input == null) {
-                throw new RuntimeException("member.properties not found in classpath.");
-            }
-            properties.load(input);
-        } catch (IOException e) {
-            throw new RuntimeException("Failed to load member.properties.", e);
-        }
+        Properties properties = getProperties();
 
         // check all default properties are provided
         String[] defaultKeys = {
