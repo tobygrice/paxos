@@ -1,17 +1,90 @@
 package com.a1848962.paxos.network;
 
+import com.a1848962.paxos.utils.SimpleLogger;
+
 import com.google.gson.Gson;
 
-// constructor methods of this class were written with the assistance of AI
-public class Message {
-    private static final Gson gson = new Gson();
+import java.io.BufferedReader;
+import java.io.IOException;
+import java.io.InputStreamReader;
+import java.io.OutputStream;
+import java.net.Socket;
+import java.util.Random;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
+public class Message {
+    // do not serialise:
+    private static final Gson gson = new Gson();
+    private transient final SimpleLogger log = new SimpleLogger("MESSAGE");
+    private transient final ExecutorService executor = Executors.newCachedThreadPool();
+    private transient final int MAX_DELAY = 1000; // maximum send delay in milliseconds
+    private transient final double LOSS_CHANCE = 0.2; // 20% chance of message loss
+    private transient final Random random = new Random();
+
+    // serialise:
     public String type; // one of: PREPARE_REQ,PROMISE,ACCEPT_REQ,ACCEPT,REJECT,LEARN
     public int proposalNumber;
     public String senderID;
     public String value = null; // councillor to be elected
     public int highestPromisedProposal = -1;
     public String acceptedValue = null;
+
+    /**
+     * Simulates network delay and packet loss.
+     *
+     * @return True if the message was lost, else False
+     */
+    private boolean simulateDelayLoss() {
+        // simulate networkInfo delay up to maxDelay length
+        int delay = random.nextInt(MAX_DELAY);
+        try {
+            Thread.sleep(delay);
+        } catch (InterruptedException ex) {
+            log.error("Error simulating delay loss - " + ex.getMessage());
+        }
+
+        // simulate message loss with LOSS_CHANCE %
+        return (random.nextDouble() < LOSS_CHANCE); // return TRUE if lost else FALSE
+    }
+
+    /**
+     * Sends a message asynchronously to the specified address and port.
+     * Returns a CompletableFuture that completes with the response or exceptionally on failure.
+     *
+     * @param address The target address.
+     * @param port The target port.
+     * @return CompletableFuture<String> with the response.
+     */
+    public CompletableFuture<Message> send(String address, int port) {
+        return CompletableFuture.supplyAsync(() -> {
+            if (simulateDelayLoss()) return null;
+
+            try (Socket socket = new Socket(address, port)) {
+                // send message
+                OutputStream socketOut = socket.getOutputStream();
+                String marshalledMessage = marshall() + "\n"; // newline as delimiter
+                socketOut.write(marshalledMessage.getBytes());
+                socketOut.flush();
+
+                // read response, timeout after 4 seconds
+                socket.setSoTimeout(4000); // 4 seconds timeout for response
+                BufferedReader socketIn = new BufferedReader(new InputStreamReader(socket.getInputStream()));
+                String response = socketIn.readLine();
+
+                if (response == null || response.isEmpty()) {
+                    log.warn("No response received from " + address + ":" + port);
+                    return null;
+                } else {
+                    return Message.unmarshall(response);
+                }
+            } catch (IOException ex) {
+                log.warn("Error communicating with " + address + ":" + port + " - " + ex.getMessage());
+                return null;
+            }
+        }, executor);
+    }
 
     /**
      * Creates a PREPARE_REQ message.

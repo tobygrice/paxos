@@ -2,6 +2,7 @@ package com.a1848962.paxos.roles;
 
 import com.a1848962.paxos.network.*;
 import com.a1848962.paxos.utils.MemberConfig;
+import com.a1848962.paxos.utils.SimpleLogger;
 
 import java.io.IOException;
 import java.io.OutputStream;
@@ -12,17 +13,19 @@ interface AcceptorRole {
     void handleAcceptRequest(Message message, OutputStream socketOut);
 }
 
-public class Acceptor extends Member implements AcceptorRole {
+public class Acceptor implements AcceptorRole {
+    private final MemberConfig config;
 
     // thread-safe data types to store the highest promised proposal, highest accepted proposal and its associated value
     private final AtomicInteger highestPromise = new AtomicInteger();
     private final StringBuilder highestPromiseProposerID = new StringBuilder("M0"); // Initialized to "M0" as default
     private final StringBuilder acceptedValue = new StringBuilder();
 
-    protected final Object promiseLock = new Object(); // lock to ensure atomicity
+    private final Object promiseLock = new Object(); // lock to ensure atomicity
+    private final SimpleLogger log = new SimpleLogger("ACCEPTOR");
 
     public Acceptor(MemberConfig config) {
-        super(config);
+        this.config = config;
     }
 
     @Override
@@ -33,7 +36,7 @@ public class Acceptor extends Member implements AcceptorRole {
             - send **_prepare-ok_**
            Otherwise, ignore
          */
-        System.out.println("Handling PREPARE request from " + message.senderID);
+        log.info("Handling PREPARE request from " + message.senderID);
         Message response = null; // initialise response message
         // parse incoming senderID and current promised ID to integer for comparison
         int incomingProposerID = Integer.parseInt(message.senderID.substring(1));
@@ -72,6 +75,7 @@ public class Acceptor extends Member implements AcceptorRole {
         - **if and only if** it has not already promised to only consider proposals having an identifier greater than n -> also implies acceptor considers proposer LEADER.
         - If it has, respond with **accept-reject**
          */
+        log.info("Handling ACCEPT request from " + message.senderID);
 
         Message response = null;
         int incomingProposerID = Integer.parseInt(message.senderID.substring(1));
@@ -88,7 +92,7 @@ public class Acceptor extends Member implements AcceptorRole {
                 acceptedValue.append(message.value);
 
                 response = Message.accept(message.proposalNumber, config.memberID, message.value);
-                System.out.println("Sending ACCEPT for proposal " + message.proposalNumber);
+                log.info("Sending ACCEPT for proposal " + message.proposalNumber);
             } else if (highestPromise.get() == message.proposalNumber && incomingProposerID < currentPromisedProposerID) {
                 // same proposalID and is the original proposer, or incoming proposer has a lower memberID (higher priority)
                 // send accept:
@@ -98,7 +102,7 @@ public class Acceptor extends Member implements AcceptorRole {
                 acceptedValue.append(message.value);
 
                 response = Message.accept(message.proposalNumber, config.memberID, message.value);
-                System.out.println("Sending ACCEPT for proposal " + message.proposalNumber + " from higher priority proposer " + message.senderID);
+                log.info("Sending ACCEPT for proposal " + message.proposalNumber + " from higher priority proposer " + message.senderID);
             } else {
                 // either proposalNumber < highestPromise or same proposalNumber but higher proposerID
                 // send reject:
@@ -111,27 +115,27 @@ public class Acceptor extends Member implements AcceptorRole {
 
     private Message createPromiseMessage(Message message, int previousHighestPromise) {
         if (acceptedValue.length() > 0) {
-            System.out.println("Sending PROMISE for proposal " + message.proposalNumber
+            log.info("Sending PROMISE for proposal " + message.proposalNumber
                     + " with previously accepted value '" + acceptedValue + "' from proposal " + previousHighestPromise);
             return Message.promise(message.proposalNumber, config.memberID, previousHighestPromise, acceptedValue.toString());
         } else {
-            System.out.println("Sending PROMISE for proposal " + message.proposalNumber + " with no previously accepted value");
+            log.info("Sending PROMISE for proposal " + message.proposalNumber + " with no previously accepted value");
             return Message.promise(message.proposalNumber, config.memberID);
         }
     }
 
     private Message createRejectMessage(Message message) {
         if (acceptedValue.length() > 0) {
-            System.out.println("Rejecting " + message.type + " from " + message.senderID
+            log.info("Rejecting " + message.type + " from " + message.senderID
                     + " for proposal " + message.proposalNumber
                     + " due to already promising proposal " + highestPromise.get()
                     + ". Including previously accepted value '" + acceptedValue + "'");
             return Message.reject(message.proposalNumber, config.memberID, highestPromise.get(), acceptedValue.toString());
         } else {
-            System.out.println("Rejecting " + message.type + " from " + message.senderID
+            log.info("Rejecting " + message.type + " from " + message.senderID
                     + " for proposal " + message.proposalNumber
                     + " due to already promising proposal " + highestPromise.get()
-                    + ". No previously accepted value to include.");
+                    + ". No previously accepted value to include");
             return Message.reject(message.proposalNumber, config.memberID, highestPromise.get());
         }
     }
@@ -141,7 +145,7 @@ public class Acceptor extends Member implements AcceptorRole {
             socketOut.write(response.marshall().getBytes());
             socketOut.flush();
         } catch (IOException ex) {
-            System.out.println("Error writing response: " + ex.getMessage());
+            log.error("Error writing response: " + ex.getMessage());
             throw new RuntimeException(ex);
         }
     }

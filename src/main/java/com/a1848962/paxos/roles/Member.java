@@ -19,34 +19,34 @@ public class Member implements Network.PaxosHandler {
     private LearnerRole learner;
 
     // configuration variables
-    protected MemberConfig config;
-    protected volatile Network network;
+    private MemberConfig config;
+    private Network network;
 
     // delay simulation variables
-    protected boolean currentlyCoorong, currentlySheoak;
-    protected static final int TIME_IN_SHEOAK = 2000; // 2 seconds at each place
-    protected static final int TIME_IN_COORONG = 2000;
+    private boolean currentlyCoorong, currentlySheoak;
+    private static final int TIME_IN_SHEOAK = 2000; // 2 seconds at each place
+    private static final int TIME_IN_COORONG = 2000;
 
     // utility variables
-    private final ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor();
+    private final ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(2);
+    private final SimpleLogger log = new SimpleLogger("MEMBER");
     protected final Random random = new Random();
 
     public Member(MemberConfig config) {
         this.config = config;
-        this.network = new Network(config.port, this);
         this.currentlySheoak = false;
     }
 
     public void start() {
-        this.proposer = config.isProposer ? new Proposer(config) : null;
-        this.acceptor = config.isAcceptor ? new Acceptor(config) : null;
-        this.learner  = config.isLearner  ? new Learner(config)  : null;
-        this.network.start();
+        start(false);
     }
 
     public void start(boolean proposerAcceptsStdin) {
-        this.start();
-        if (proposer != null && proposerAcceptsStdin) proposer.listenStdin();
+        this.proposer = config.isProposer ? new Proposer(config, proposerAcceptsStdin) : null;
+        this.acceptor = config.isAcceptor ? new Acceptor(config) : null;
+        this.learner  = config.isLearner  ? new Learner(config)  : null;
+        this.network = new Network(config.port, this);
+        this.network.start();
     }
 
     public void shutdown() {
@@ -54,7 +54,7 @@ public class Member implements Network.PaxosHandler {
             // shutdown networkInfo
             if (network != null) network.shutdown();
         } catch (Exception ex) {
-            System.out.println("Error during shutdown - " + ex.getMessage());
+            log.error("Error during shutdown - " + ex.getMessage());
         }
     }
 
@@ -62,16 +62,17 @@ public class Member implements Network.PaxosHandler {
         currentlyCoorong = false;
 
         // simulate chance for member to go camping
-        if (config.chanceCoorong > random.nextDouble()) {
+        if (random.nextDouble() < config.chanceCoorong ) {
             // member has gone camping in the Coorong, now unreachable
-            System.out.println(config.memberID + " is camping in the Coorong. They are unreachable.");
-            currentlyCoorong = true;
+            log.info(config.memberID + " is camping in the Coorong. They are unreachable.");
+            this.currentlyCoorong = true;
+            scheduler.schedule(() -> {this.currentlyCoorong = false;}, TIME_IN_COORONG, TimeUnit.MILLISECONDS);
         }
 
         // simulate chance for member to go to Sheoak cafe
-        if (!currentlySheoak && config.chanceSheoak > random.nextDouble()) {
+        if (!currentlySheoak && random.nextDouble() < config.chanceSheoak) {
             // member has gone to Sheoak cafe, responses now instant
-            System.out.println(config.memberID + " is at Sheoak Café. Responses are instant.");
+            log.info(config.memberID + " is at Sheoak Café. Responses are instant.");
             this.currentlySheoak = true; // update currentlySheoak boolean and start reset timer using scheduler
             scheduler.schedule(() -> {this.currentlySheoak = false;}, TIME_IN_SHEOAK, TimeUnit.MILLISECONDS);
         }
@@ -83,13 +84,13 @@ public class Member implements Network.PaxosHandler {
         try {
             Thread.sleep(delay);
         } catch (InterruptedException e) {
-            System.out.println("Error during sleeping for delay simulation - " + e.getMessage());
+            log.error("Error during sleeping for delay simulation - " + e.getMessage());
             throw new RuntimeException(e);
         }
     }
 
     public void handleIncomingMessage(Message message, OutputStream socketOut) {
-        // simulateNodeDelay();
+        if (this.config.isProposer) simulateNodeDelay(); // simulate coorong/sheoak events for proposers
 
         switch (message.type) {
             // most of the time PROMISE/ACCEPT/REJECT messages will be sent as a response to an open socket, and so they
@@ -116,7 +117,7 @@ public class Member implements Network.PaxosHandler {
                 if (learner != null) learner.handleLearn(message, socketOut);
                 break;
             default:
-                System.out.println("Incoming incompatible message type: " + message.type);
+                log.warn("Incoming incompatible message type: " + message.type);
         }
     }
 
@@ -131,10 +132,5 @@ public class Member implements Network.PaxosHandler {
         MemberConfig config = new MemberConfig(args[0]);
         Member member = new Member(config);
         member.start(true);
-
-        if (member.config.isProposer) member.proposer.propose("M4"); // propose M4
-        if (member.config.isProposer) member.proposer.propose(); // propose self
-
-        if (member.config.isLearner) member.learner.getLearnedValue();
     }
 }

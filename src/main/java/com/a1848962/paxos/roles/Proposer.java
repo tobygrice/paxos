@@ -6,75 +6,90 @@ import com.a1848962.paxos.utils.*;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
-import java.io.OutputStream;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.Random;
 
 interface ProposerRole {
     void propose();
     void propose(String target);
-    void listenStdin();
-    void sendPrepareRequest();
     void handlePrepareReqResponse(Message response);
-    void sendAcceptRequest(Proposal proposal);
     void handleAcceptReqResponse(Message response);
     void handleRejectResponse(Message response);
-    void sendLearn(Proposal proposal);
 }
 
-public class Proposer extends Member implements ProposerRole {
-    private static final int RETRY_DELAY = 2000; // retry proposal after 2 seconds
+/**
+ * Proposer class to make propositions and orchestrate Paxos protocol. Implements proposer role.
+ */
+public class Proposer implements ProposerRole {
+    private final MemberConfig config;
 
+    // while network delay simulation is in place, be careful not to set this below MAX_DELAY*3 of Network class
+    // also consider coorong simulation, some nodes may take over 2000ms to respond
+    private static final int RETRY_DELAY = 10000; // retry proposal after 10 seconds
+    private static final int MAX_RETRIES = 3; // how many times to retry sending a LEARN message
+
+    // proposal variables
     private final AtomicInteger proposalCounter = new AtomicInteger(0);
     private final ConcurrentHashMap<Integer, Proposal> activeProposals = new ConcurrentHashMap<>();
+    private String preferredLeader;
     private final int majority;
 
-    private String preferredLeader;
-
-    private final ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(2);
+    // utility variables
+    private final ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor();
     private final ExecutorService executor = Executors.newCachedThreadPool();
+    private final SimpleLogger log = new SimpleLogger("PROPOSER");
 
-    public Proposer(MemberConfig config) {
-        super(config);
+    public Proposer(MemberConfig config, boolean listenStdin) {
+        this.config = config;
         this.preferredLeader = config.memberID;
         this.majority = (config.networkInfo.size() / 2) + 1; // calculate majority required for consensus
+        if (listenStdin) listenStdin();
     }
 
+
+    /**
+     * Starts Paxos protocol by broadcasting a prepare request. Node will attempt to propose itself as councillor.
+     */
+    @Override
     public void propose() {
         sendPrepareRequest();
     }
 
+    /**
+     * Starts Paxos protocol by broadcasting a prepare request. Node will attempt to propose specified target as councillor.
+     *
+     * @param target    The member to propose for councillor.
+     */
+    @Override
     public void propose(String target) {
         this.preferredLeader = target;
         sendPrepareRequest();
     }
 
-    @Override
-    public void sendPrepareRequest() {
-
+    /**
+     * Broadcasts a PREPARE_REQ message to all nodes (including self). Response is handled by handlePrepareReqResponse.
+     */
+    private void sendPrepareRequest() {
         int currentProposalNum = proposalCounter.incrementAndGet();
-        System.out.println("Broadcasting PREPARE_REQ with proposal number " + currentProposalNum);
+        log.info("Broadcasting PREPARE_REQ with proposal number " + currentProposalNum);
 
+        // create a new PREPARE_REQ message and a Proposal object to store proposal data.
         Message prepare = Message.prepareRequest(currentProposalNum, config.memberID);
         Proposal proposal = new Proposal(currentProposalNum);
-        activeProposals.put(currentProposalNum, proposal);
+        activeProposals.put(currentProposalNum, proposal); // add proposal to active proposals hashmap
 
-        // send to all acceptors in networkInfo:
+        // send PREPARE_REQ message to all acceptors in networkInfo
         for (MemberConfig.MemberInfo memberInfo : this.config.networkInfo.values()) {
             if (memberInfo.isAcceptor) {
-                network.sendMessage(memberInfo.address, memberInfo.port, prepare)
+                // use sendMessage function of Network to send message to a ServerSocket. Returns a
+                // CompletableFuture<Message> object which is passed to handlePrepareReqResponse()
+                prepare.send(memberInfo.address, memberInfo.port)
                         .thenAccept(this::handlePrepareReqResponse)
                         .exceptionally(ex -> {
-                            if (ex.getCause().getCause() instanceof java.net.SocketTimeoutException) {
-                                System.out.println("No response to PREPARE_REQ received from " + memberInfo.id
-                                        + " (timed out) for proposal " + proposal.getProposalNumber()
-                                        + ", incrementing reject count.");
-                            } else {
-                                System.out.println("Failed to send PREPARE_REQ to " + memberInfo.id
-                                        + " for proposal " + proposal.getProposalNumber()
-                                        + ", incrementing reject count - " + ex.getMessage());
-                            }
+                            log.warn("Communication failed for PREPARE_REQ to " + memberInfo.id
+                                    + " for proposal " + prepare.proposalNumber
+                                    + ", incrementing reject count");
+                            // count failure to send/receive as a rejection
                             proposal.incrementRejectCount();
                             checkPhaseOneMajority(proposal);
                             return null;
@@ -82,11 +97,10 @@ public class Proposer extends Member implements ProposerRole {
             }
         }
 
-
         // schedule proposal to timeout and retry after RETRY_DELAY
         scheduler.schedule(() -> {
             if (!proposal.isCompleted()) {
-                System.out.println("Proposal " + proposal.getProposalNumber() + " timed out. Starting new proposal.");
+                log.info("Proposal " + proposal.getProposalNumber() + " timed out. Starting new proposal");
                 activeProposals.remove(proposal.getProposalNumber());
                 sendPrepareRequest();
             }
@@ -94,23 +108,20 @@ public class Proposer extends Member implements ProposerRole {
     }
 
     /**
-     * Handles incoming responses for PREPARE messages.
+     * Handles responses to a PREPARE_REQ message (PROMISE or REJECT)
      *
      * @param response       The response Message.
      */
     @Override
     public void handlePrepareReqResponse(Message response) {
-        simulateNodeDelay();
 
         int proposalNumber = response.proposalNumber;
         Proposal proposal = activeProposals.get(proposalNumber);
+        if (proposal == null) return;
 
-        if (proposal == null) {
-            /* System.out.println("Handle PREPARE_REQ method received " + response.type + " response from "
-                    + response.senderID + " for unknown proposal number " + proposalNumber); */
-        } else if (response.type.equals("PROMISE")) {
+        if (response.type.equals("PROMISE")) {
             proposal.addPromise(response);
-            System.out.println("Received PROMISE from " + response.senderID + " for proposal " + proposalNumber);
+            log.info("Received PROMISE from " + response.senderID + " for proposal " + proposalNumber);
             checkPhaseOneMajority(proposal);
         } else if (response.type.equalsIgnoreCase("REJECT")) {
             proposal.incrementRejectCount();
@@ -119,10 +130,10 @@ public class Proposer extends Member implements ProposerRole {
             if (response.highestPromisedProposal > this.proposalCounter.get()) {
                 proposalCounter.set(response.highestPromisedProposal);
             }
-            System.out.println("Received REJECT from " + response.senderID + " for proposal " + proposalNumber);
+            log.info("Received REJECT from " + response.senderID + " for proposal " + proposalNumber);
             checkPhaseOneMajority(proposal);
         } else {
-            System.out.println("Unexpected response to PREPARE_REQ: " + response.type + " from " + response.senderID +
+            log.warn("Unexpected response to PREPARE_REQ: " + response.type + " from " + response.senderID +
                     " for proposal " + proposalNumber);
         }
     }
@@ -139,19 +150,19 @@ public class Proposer extends Member implements ProposerRole {
         }
 
         if (proposal.getPromiseCount() >= majority) {
-            System.out.println("Majority PROMISEs received for proposal " + proposal.getProposalNumber() + ". Sending ACCEPT_REQUEST.");
+            log.info("Majority PROMISEs received for proposal " + proposal.getProposalNumber() + ". Sending ACCEPT_REQUEST");
             proposal.markPhaseOneCompleted();
             proposal.resetRejectCount(); // reset for next phase
             sendAcceptRequest(proposal);
         } else if (proposal.getRejectCount() >= majority) {
-            System.out.println("Majority REJECTs received for proposal " + proposal.getProposalNumber() + " in phase one. Allowing scheduler to retry after timeout.");
+            log.info("Majority REJECTs received for proposal " + proposal.getProposalNumber() + " in phase one. Allowing scheduler to retry after timeout");
             proposal.markPhaseOneCompleted();
+            proposal.resetRejectCount();
             // allow scheduler to retry prepare phase after proposal times out, to prevent livelock
         }
     }
 
-    @Override
-    public void sendAcceptRequest(Proposal proposal) {
+    private void sendAcceptRequest(Proposal proposal) {
         /*
         If a proposer receives enough PROMISEs from a majority, it needs to set a value to its proposal
         - If any acceptors had sent a value and proposal number to the proposer, then proposer sets the value of its proposal to the **value associated with the highest proposal number** reported by the acceptors
@@ -175,21 +186,12 @@ public class Proposer extends Member implements ProposerRole {
         // send to all acceptors in the networkInfo:
         for (MemberConfig.MemberInfo memberInfo : this.config.networkInfo.values()) {
             if (memberInfo.isAcceptor) {
-                network.sendMessage(memberInfo.address, memberInfo.port, acceptRequest)
+                acceptRequest.send(memberInfo.address, memberInfo.port)
                         .thenAccept(this::handleAcceptReqResponse)
                         .exceptionally(ex -> {
-                            if (ex.getCause() instanceof java.net.SocketTimeoutException) {
-                                System.out.println("No response to ACCEPT_REQ received from " + memberInfo.id
-                                        + " (timed out) for proposal " + proposal.getProposalNumber()
-                                        + ", incrementing reject count.");
-                            } else {
-                                System.out.println("Failed to send ACCEPT_REQ to " + memberInfo.id
-                                        + " for proposal " + proposal.getProposalNumber()
-                                        + ", incrementing reject count.");
-                            }
-                            System.out.println("Failed to send ACCEPT_REQ to " + memberInfo.id
-                                    + " for proposal " + proposal.getProposalNumber() + ". Incrementing reject count. "
-                                    + ex.getMessage());
+                            log.warn("Communication failed for ACCEPT_REQ to " + memberInfo.id
+                                    + " for proposal " + proposal.getProposalNumber()
+                                    + ", incrementing reject count");
                             proposal.incrementRejectCount();
                             checkPhaseTwoMajority(proposal);
                             return null;
@@ -200,33 +202,33 @@ public class Proposer extends Member implements ProposerRole {
 
     @Override
     public void handleAcceptReqResponse(Message response) {
-        simulateNodeDelay();
 
         int proposalNumber = response.proposalNumber;
         Proposal proposal = activeProposals.get(proposalNumber);
 
         if (proposal == null) {
-            /* System.out.println("Handle ACCEPT_REQ method received " + response.type + " response from "
-                    + response.senderID + " for unknown proposal number " + proposalNumber); */
-        } else if (response.type.equals("ACCEPT")) {
+            return;
+        }
+
+        if (response.type.equals("ACCEPT")) {
             proposal.addAccept(response);
-            System.out.println("Received ACCEPT from " + response.senderID + " for proposal " + proposalNumber);
+            log.info("Received ACCEPT from " + response.senderID + " for proposal " + proposalNumber);
             checkPhaseTwoMajority(proposal);
         } else if (response.type.equalsIgnoreCase("REJECT")) {
             proposal.incrementRejectCount();
             // if node is rejecting because it has accepted a proposal with a greater ID, update proposal counter to
             // match to ensure next prepare message will have a current ID:
             if (response.highestPromisedProposal > this.proposalCounter.get()) {
-                System.out.println("Received REJECT from " + response.senderID + " for proposal " + proposalNumber
-                + " with higher promised value. Updating proposal ID for next round.");
+                log.info("Received REJECT from " + response.senderID + " for proposal " + proposalNumber
+                + " with higher promised value. Updating proposal ID for next round");
                 proposalCounter.set(response.highestPromisedProposal);
             } else {
-                System.out.println("Received REJECT from " + response.senderID + " for proposal " + proposalNumber
+                log.info("Received REJECT from " + response.senderID + " for proposal " + proposalNumber
                         + " with promised ID: " + response.highestPromisedProposal);
             }
             checkPhaseTwoMajority(proposal);
         } else {
-            System.out.println("Unexpected response to ACCEPT_REQ: " + response.type + " from " + response.senderID +
+            log.warn("Unexpected response to ACCEPT_REQ: " + response.type + " from " + response.senderID +
                     " for proposal " + proposalNumber);
         }
     }
@@ -236,13 +238,13 @@ public class Proposer extends Member implements ProposerRole {
             return;
         }
         if (proposal.getAcceptCount() >= majority) {
-            System.out.println("Majority ACCEPTs received for proposal " + proposal.getProposalNumber()
+            log.info("Majority ACCEPTs received for proposal " + proposal.getProposalNumber()
                     + ". Sending LEARN with value " + proposal.value);
             proposal.markCompleted(); // to prevent scheduler from retrying
-            sendLearn(proposal);
+            sendLearn(proposal, MAX_RETRIES);
             activeProposals.remove(proposal.getProposalNumber());
         } else if (proposal.getRejectCount() >= majority) {
-            System.out.println("Majority REJECTS received for proposal " + proposal.getProposalNumber() + " in phase two. Retrying.");
+            log.info("Majority REJECTS received for proposal " + proposal.getProposalNumber() + " in phase two. Retrying");
             // wait for scheduler to retry
         }
     }
@@ -253,7 +255,7 @@ public class Proposer extends Member implements ProposerRole {
         int proposalNumber = response.proposalNumber;
         Proposal proposal = activeProposals.get(proposalNumber);
         if (proposal == null) {
-            System.out.println("Received incoming REJECT from " + response.senderID + " for expired proposal " + proposalNumber);
+            log.info("Received incoming REJECT from " + response.senderID + " for expired proposal " + proposalNumber);
         } else if (!proposal.isPhaseOneCompleted()) {
             // proposal is active and phase one is incomplete, REJECT is in response to prepare request
             handlePrepareReqResponse(response);
@@ -263,41 +265,64 @@ public class Proposer extends Member implements ProposerRole {
         }
     }
 
-    @Override
-    public void sendLearn(Proposal proposal) {
+    private void sendLearnSingleNode(Message learn, MemberConfig.MemberInfo memberInfo, Proposal proposal, int retries) {
+        learn.send(memberInfo.address, memberInfo.port)
+                .thenAccept(response -> {
+                    if (response.type.equals("ACK")) {
+                        log.info("Received ACK from " + response.senderID
+                                + " for LEARN message with value " + proposal.value);
+                    } else if (response.type.equals("NACK")) {
+                        if (retries > 0) {
+                            log.info("Received NACK from " + response.senderID
+                                    + " for LEARN message with value " + proposal.value
+                                    + ". Retrying " + retries + " more times");
+                            try {
+                                Thread.sleep(1000);
+                            } catch (InterruptedException e) {
+                                throw new RuntimeException(e);
+                            }
+                            sendLearnSingleNode(learn, memberInfo, proposal, retries - 1);
+                        } else {
+                            log.warn("Received too many NACKs from " + response.senderID
+                                    + " for LEARN message with value " + proposal.value
+                                    + ". Node has not learned value");
+                        }
+                    } else {
+                        log.warn("Received unexpected message type: " + response.type + " from "
+                                + response.senderID + " for LEARN message with value " + proposal.value);
+                    }
+                })
+                .exceptionally(ex -> {
+                    if (retries > 0) {
+                        log.warn("No response to LEARN received from " + memberInfo.id
+                                + " for proposal " + proposal.getProposalNumber()
+                                + ". Retrying " + retries + " more times");
+                        try {
+                            Thread.sleep(1000);
+                        } catch (InterruptedException e) {
+                            throw new RuntimeException(e);
+                        }
+                        sendLearnSingleNode(learn, memberInfo, proposal, retries - 1);
+                    } else {
+                        log.warn("Received no response to LEARN from " + memberInfo.id
+                                + " for proposal " + proposal.getProposalNumber()
+                                + " too many times. Cannot confirm node has learned value");
+                    }
+                    return null;
+                });
+    }
+
+    private void sendLearn(Proposal proposal, int maxRetries) {
         Message learn = Message.learn(proposal.getProposalNumber(), config.memberID, proposal.value);
         // send to all acceptors in networkInfo:
         for (MemberConfig.MemberInfo memberInfo : this.config.networkInfo.values()) {
             if (memberInfo.isAcceptor) {
-                network.sendMessage(memberInfo.address, memberInfo.port, learn)
-                        .thenAccept(response -> {
-                            if (response.type.equals("ACK")) {
-                                System.out.println("Received ACK from " + response.senderID
-                                        + " for LEARN message with value " + proposal.value);
-                            } else if (response.type.equals("NACK")) {
-                                System.out.println("Received NACK from " + response.senderID
-                                        + " for LEARN message with value " + proposal.value);
-                            } else {
-                                System.out.println("Received unexpected message type: " + response.type + " from "
-                                        + response.senderID + " for LEARN message with value " + proposal.value);
-                            }
-                        })
-                        .exceptionally(ex -> {
-                            if (ex.getCause() instanceof java.net.SocketTimeoutException) {
-                                System.out.println("No response to LEARN received from " + memberInfo.id
-                                        + " (timed out) for proposal " + proposal.getProposalNumber());
-                            } else {
-                                System.out.println("Failed to send LEARN to " + memberInfo.id
-                                        + " for proposal " + proposal.getProposalNumber());
-                            }
-                            return null;
-                        });
+                sendLearnSingleNode(learn, memberInfo, proposal, maxRetries);
             }
         }
     }
 
-    @Override
-    public void listenStdin() {
+    private void listenStdin() {
 
         System.out.println("Proposer accepting commands on STDIN. Usage:");
         System.out.println(" - `propose M<number>` to start Paxos protocol to elect indicated member");
@@ -334,7 +359,7 @@ public class Proposer extends Member implements ProposerRole {
                     }
                 }
             } catch (IOException e) {
-                System.out.println("Error reading stdin: " + e.getMessage());
+                log.error("Error reading stdin: " + e.getMessage());
             }
         });
     }
@@ -342,7 +367,7 @@ public class Proposer extends Member implements ProposerRole {
     public void shutdown() {
         executor.shutdownNow(); // shutdown executor
         scheduler.shutdownNow(); // shutdown scheduler
-        System.out.println("Shutdown complete.");
+        log.info("Shutdown complete");
         System.exit(0);
     }
 }
