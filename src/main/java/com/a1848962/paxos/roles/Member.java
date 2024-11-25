@@ -19,11 +19,9 @@ public class Member implements Network.PaxosHandler {
     // delay simulation variables
     //      while network delay simulation is in place, be careful not to set RETRY_DELAY below MAX_DELAY of Network class
     //      also consider coorong simulation, some nodes may take over 2000ms to respond
-    protected static final int RETRY_DELAY = 8000; // time to wait before retrying a proposal
-    protected static final int MAX_RETRIES = 3; // how many times to retry sending a LEARN message
-    protected static final int TIME_IN_SHEOAK = 5000; // time in ms for member to stay at coorong
-    protected static final int TIME_IN_COORONG = 5000; // time in ms for member to stay at coorong
-    protected static final int SIMULATION_FREQUENCY = 1000; // frequency in ms to simulate chance of Coorong/Sheoak state
+    protected static final int TIME_IN_SHEOAK = 10000; // time in ms for member to stay at coorong
+    protected static final int TIME_IN_COORONG = 10000; // time in ms for member to stay at coorong
+    protected static final int SIMULATION_FREQUENCY = 2000; // frequency in ms to simulate chance of Coorong/Sheoak state
 
     // state variables for delay simulation
     protected boolean currentlyCoorong = false;
@@ -52,9 +50,9 @@ public class Member implements Network.PaxosHandler {
 
     public void start(boolean proposerAcceptsStdin) {
         log.info("Starting Member");
-        this.proposer = config.isProposer ? new Proposer(config, proposerAcceptsStdin) : null;
-        this.acceptor = config.isAcceptor ? new Acceptor(config) : null;
-        this.learner  = config.isLearner  ? new Learner(config)  : null;
+        this.proposer = config.isProposer ? new Proposer(this, proposerAcceptsStdin) : null;
+        this.acceptor = config.isAcceptor ? new Acceptor(this) : null;
+        this.learner  = config.isLearner  ? new Learner(this)  : null;
         this.network = new Network(config.port, this);
         this.network.start();
         scheduler.scheduleAtFixedRate(this::simulateSheoakCoorong, SIMULATION_FREQUENCY, SIMULATION_FREQUENCY, TimeUnit.MILLISECONDS);
@@ -143,14 +141,13 @@ public class Member implements Network.PaxosHandler {
     /**
      * Method to simulate delay (or lack thereof) for a proposer node according to Sheoak or Coorong status
      */
-    protected void simulateNodeDelay() {
+    protected long simulateNodeDelay() {
         long currentTime = System.currentTimeMillis();
 
         // calculate delay based on current state:
         long delay;
         if (currentlySheoak) {
             // instant response
-            log.info("Currently sheoak, instant response");
             delay = 0;
         } else if (currentlyCoorong) {
             // delay until TIME_IN_COORONG has passed (since entering)
@@ -160,16 +157,12 @@ public class Member implements Network.PaxosHandler {
         } else {
             // normal operation: random delay up to maxDelay
             delay = (long) (random.nextDouble() * config.maxDelay);
-            log.info("Neither, standard delay of " + delay + " ms");
         }
 
         if (delay > 0) {
-            try {
-                Thread.sleep(delay);
-            } catch (InterruptedException ex) {
-                log.error("Error during sleeping for delay simulation - " + ex.getMessage());
-                throw new RuntimeException(ex);
-            }
+            return delay;
+        } else {
+            return 0;
         }
     }
 

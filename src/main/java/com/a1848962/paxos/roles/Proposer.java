@@ -6,7 +6,6 @@ import com.a1848962.paxos.utils.*;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
-import java.io.OutputStream;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -22,7 +21,8 @@ interface ProposerRole {
 /**
  * Proposer class to make propositions and orchestrate Paxos protocol. Implements proposer role.
  */
-public class Proposer extends Member implements ProposerRole {
+public class Proposer implements ProposerRole {
+    private final Member member;
 
     // proposal variables
     private final AtomicInteger proposalCounter = new AtomicInteger(0);
@@ -30,20 +30,21 @@ public class Proposer extends Member implements ProposerRole {
     private String preferredLeader;
     private final int majority;
 
+    // network variables
+    private static final int RETRY_DELAY = 8000; // time to wait before retrying a proposal
+    private static final int MAX_RETRIES = 3; // how many times to retry sending a LEARN message
+
     // utility variables
-    private final ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(2);
+    private final ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor();
     private final ExecutorService executor = Executors.newCachedThreadPool();
     private final SimpleLogger log = new SimpleLogger("PROPOSER");
 
-    public Proposer(MemberConfig config, boolean listenStdin) {
-        super(config);
-        this.preferredLeader = config.memberID;
-        this.majority = (config.networkInfo.size() / 2) + 1; // calculate majority required for consensus
+    public Proposer(Member member, boolean listenStdin) {
+        this.member = member;
+        this.preferredLeader = member.config.memberID;
+        this.majority = (member.config.networkInfo.size() / 2) + 1; // calculate majority required for consensus
         if (listenStdin) listenStdin();
     }
-
-    @Override // don't want Proposer objects to handle incoming messages
-    public void handleIncomingMessage(Message message, OutputStream socketOut) {}
 
     /**
      * Starts Paxos protocol by broadcasting a prepare request. Node will attempt to propose itself as councillor.
@@ -72,12 +73,12 @@ public class Proposer extends Member implements ProposerRole {
         log.info("Broadcasting PREPARE_REQ with proposal number " + currentProposalNum);
 
         // create a new PREPARE_REQ message and a Proposal object to store proposal data.
-        Message prepare = Message.prepareRequest(currentProposalNum, config.memberID);
+        Message prepare = Message.prepareRequest(currentProposalNum, member.config.memberID);
         Proposal proposal = new Proposal(currentProposalNum);
         activeProposals.put(currentProposalNum, proposal); // add proposal to active proposals hashmap
 
         // send PREPARE_REQ message to all acceptors in networkInfo
-        for (MemberConfig.MemberInfo memberInfo : this.config.networkInfo.values()) {
+        for (MemberConfig.MemberInfo memberInfo : this.member.config.networkInfo.values()) {
             if (memberInfo.isAcceptor) {
                 // use sendMessage function of Network to send message to a ServerSocket. Returns a
                 // CompletableFuture<Message> object which is passed to handlePrepareReqResponse()
@@ -112,7 +113,12 @@ public class Proposer extends Member implements ProposerRole {
      */
     @Override
     public void handlePrepareReqResponse(Message response) {
-        simulateNodeDelay(); // simulate Coorong/Sheoak delays
+        // simulate Coorong/Sheoak delays
+        try {
+            Thread.sleep(member.simulateNodeDelay());
+        } catch (InterruptedException e) {
+            throw new RuntimeException(e);
+        }
 
         int proposalNumber = response.proposalNumber;
         Proposal proposal = activeProposals.get(proposalNumber);
@@ -168,6 +174,7 @@ public class Proposer extends Member implements ProposerRole {
         - If none of the acceptors had accepted a proposal up to this point, then the proposer may choose any value for its proposal
         - The Proposer sends an Accept Request message to all nodes with the chosen value for its proposal.
          */
+        log.info("Broadcasting ACCEPT_REQUEST for proposal " + proposal.getProposalNumber());
 
         // assign value to proposal:
         int largestAcceptedProposal = -1;
@@ -180,10 +187,10 @@ public class Proposer extends Member implements ProposerRole {
             }
         }
 
-        Message acceptRequest = Message.acceptRequest(proposal.getProposalNumber(), config.memberID, proposal.value);
+        Message acceptRequest = Message.acceptRequest(proposal.getProposalNumber(), member.config.memberID, proposal.value);
 
         // send to all acceptors in the networkInfo:
-        for (MemberConfig.MemberInfo memberInfo : this.config.networkInfo.values()) {
+        for (MemberConfig.MemberInfo memberInfo : this.member.config.networkInfo.values()) {
             if (memberInfo.isAcceptor) {
                 acceptRequest.send(memberInfo.address, memberInfo.port)
                         .thenAccept(this::handleAcceptReqResponse)
@@ -201,7 +208,12 @@ public class Proposer extends Member implements ProposerRole {
 
     @Override
     public void handleAcceptReqResponse(Message response) {
-        simulateNodeDelay(); // simulate Coorong/Sheoak delays
+        // simulate Coorong/Sheoak delays
+        try {
+            Thread.sleep(member.simulateNodeDelay());
+        } catch (InterruptedException e) {
+            throw new RuntimeException(e);
+        }
 
         int proposalNumber = response.proposalNumber;
         Proposal proposal = activeProposals.get(proposalNumber);
@@ -313,9 +325,9 @@ public class Proposer extends Member implements ProposerRole {
     }
 
     private void sendLearn(Proposal proposal, int maxRetries) {
-        Message learn = Message.learn(proposal.getProposalNumber(), config.memberID, proposal.value);
+        Message learn = Message.learn(proposal.getProposalNumber(), member.config.memberID, proposal.value);
         // send to all acceptors in networkInfo:
-        for (MemberConfig.MemberInfo memberInfo : this.config.networkInfo.values()) {
+        for (MemberConfig.MemberInfo memberInfo : this.member.config.networkInfo.values()) {
             if (memberInfo.isAcceptor) {
                 sendLearnSingleNode(learn, memberInfo, proposal, maxRetries);
             }
@@ -344,7 +356,7 @@ public class Proposer extends Member implements ProposerRole {
                             System.out.println("Proposing member " + value);
                         } else {
                             System.out.println("Proposing self");
-                            this.preferredLeader = config.memberID;
+                            this.preferredLeader = member.config.memberID;
                         }
                         // send proposal to all nodes in networkInfo:
                         sendPrepareRequest();
@@ -371,3 +383,52 @@ public class Proposer extends Member implements ProposerRole {
         log.info("Proposer shutdown complete");
     }
 }
+
+/*
+private void sendLearnSingleNode(Message learn, MemberConfig.MemberInfo memberInfo, Proposal proposal, int retries) {
+        learn.send(memberInfo.address, memberInfo.port)
+                .thenAccept(response -> {
+                    if (response.type.equals("ACK")) {
+                        log.info("Received ACK from " + response.senderID
+                                + " for LEARN message with value " + proposal.value);
+                    } else if (response.type.equals("NACK")) {
+                        if (retries > 0) {
+                            log.info("Received NACK from " + response.senderID
+                                    + " for LEARN message with value " + proposal.value
+                                    + ". Retrying " + retries + " more times");
+                            try {
+                                Thread.sleep(1000);
+                            } catch (InterruptedException e) {
+                                throw new RuntimeException(e);
+                            }
+                            sendLearnSingleNode(learn, memberInfo, proposal, retries - 1);
+                        } else {
+                            log.warn("Received too many NACKs from " + response.senderID
+                                    + " for LEARN message with value " + proposal.value
+                                    + ". Node has not learned value");
+                        }
+                    } else {
+                        log.warn("Received unexpected message type: " + response.type + " from "
+                                + response.senderID + " for LEARN message with value " + proposal.value);
+                    }
+                })
+                .exceptionally(ex -> {
+                    if (retries > 0) {
+                        log.warn("No response to LEARN received from " + memberInfo.id
+                                + " for proposal " + proposal.getProposalNumber()
+                                + ". Retrying " + retries + " more times");
+                        try {
+                            Thread.sleep(1000);
+                        } catch (InterruptedException e) {
+                            throw new RuntimeException(e);
+                        }
+                        sendLearnSingleNode(learn, memberInfo, proposal, retries - 1);
+                    } else {
+                        log.warn("Received no response to LEARN from " + memberInfo.id
+                                + " for proposal " + proposal.getProposalNumber()
+                                + " too many times. Cannot confirm node has learned value");
+                    }
+                    return null;
+                });
+    }
+ */

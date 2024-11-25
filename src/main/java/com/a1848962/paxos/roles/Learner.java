@@ -15,13 +15,15 @@ interface LearnerRole {
 // All members are learners. For this assignment, all members are also acceptors,
 // but this is not a requirement of Paxos. Therefore, I have seperated the learner/acceptor
 // classes.
-public class Learner extends Member implements LearnerRole {
+public class Learner implements LearnerRole {
+    private final Member member;
+
     private final StringBuffer learnedValue;
 
     private final SimpleLogger log = new SimpleLogger("LEARNER");
 
-    public Learner(MemberConfig config) {
-        super(config);
+    public Learner(Member member) {
+        this.member = member;
         learnedValue = new StringBuffer();
     }
 
@@ -29,12 +31,14 @@ public class Learner extends Member implements LearnerRole {
         return learnedValue.toString();
     }
 
-    @Override // don't want Learner objects to handle incoming messages
-    public void handleIncomingMessage(Message message, OutputStream socketOut) {}
-
     @Override
     public void handleLearn(Message message, OutputStream socketOut) {
-        simulateNodeDelay(); // simulate Coorong/Sheoak delays
+        // simulate Coorong/Sheoak delays
+        try {
+            Thread.sleep(member.simulateNodeDelay());
+        } catch (InterruptedException e) {
+            throw new RuntimeException(e);
+        }
 
         log.info("Handling LEARN request from " + message.senderID);
 
@@ -50,7 +54,7 @@ public class Learner extends Member implements LearnerRole {
     }
 
     private void sendAck(OutputStream socketOut) {
-        Message ack = Message.ack(this.config.memberID);
+        Message ack = Message.ack(this.member.config.memberID);
         try {
             socketOut.write(ack.marshall().getBytes());
             socketOut.flush();
@@ -60,7 +64,7 @@ public class Learner extends Member implements LearnerRole {
     }
 
     private void sendNack(OutputStream socketOut) {
-        Message nack = Message.nack(this.config.memberID);
+        Message nack = Message.nack(this.member.config.memberID);
         try {
             socketOut.write(nack.marshall().getBytes());
             socketOut.flush();

@@ -19,9 +19,9 @@ public class Message {
     private static final Gson gson = new Gson();
     private static final int MAX_DELAY = 500; // maximum send delay in milliseconds
     private static final double LOSS_CHANCE = 0.2; // 20% chance of message loss
-    private transient final SimpleLogger log = new SimpleLogger("MESSAGE");
-    private transient final ExecutorService executor = Executors.newCachedThreadPool();
-    private transient final Random random = new Random();
+    private static final ExecutorService executor = Executors.newCachedThreadPool();
+    private static final SimpleLogger log = new SimpleLogger("MESSAGE");
+    private static final Random random = new Random();
 
     // serialise:
     public String type; // one of: PREPARE_REQ,PROMISE,ACCEPT_REQ,ACCEPT,REJECT,LEARN
@@ -64,7 +64,7 @@ public class Message {
             try (Socket socket = new Socket(address, port)) {
                 // send message
                 OutputStream socketOut = socket.getOutputStream();
-                String marshalledMessage = marshall() + "\n"; // newline as delimiter
+                String marshalledMessage = marshall(); // newline as delimiter
                 socketOut.write(marshalledMessage.getBytes());
                 socketOut.flush();
 
@@ -79,7 +79,7 @@ public class Message {
                 } else {
                     return Message.unmarshall(response);
                 }
-            } catch (IOException ex) {
+            } catch (Exception ex) {
                 log.warn("Error communicating with " + address + ":" + port + " - " + ex.getMessage());
                 return null;
             }
