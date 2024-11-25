@@ -13,6 +13,7 @@ import java.util.concurrent.TimeUnit;
 
 /* class to simulate a member in the networkInfo. */
 public class Member implements Network.PaxosHandler {
+
     // role variables
     private ProposerRole proposer;
     private AcceptorRole acceptor;
@@ -23,18 +24,14 @@ public class Member implements Network.PaxosHandler {
     private Network network;
 
     // delay simulation variables
-    private boolean currentlyCoorong, currentlySheoak;
-    private static final int TIME_IN_SHEOAK = 2000; // 2 seconds at each place
-    private static final int TIME_IN_COORONG = 2000;
+
 
     // utility variables
     private final ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(2);
     private final SimpleLogger log = new SimpleLogger("MEMBER");
-    protected final Random random = new Random();
 
     public Member(MemberConfig config) {
         this.config = config;
-        this.currentlySheoak = false;
     }
 
     public void start() {
@@ -58,39 +55,9 @@ public class Member implements Network.PaxosHandler {
         }
     }
 
-    protected void simulateNodeDelay() {
-        currentlyCoorong = false;
 
-        // simulate chance for member to go camping
-        if (random.nextDouble() < config.chanceCoorong ) {
-            // member has gone camping in the Coorong, now unreachable
-            log.info(config.memberID + " is camping in the Coorong. They are unreachable.");
-            this.currentlyCoorong = true;
-            scheduler.schedule(() -> {this.currentlyCoorong = false;}, TIME_IN_COORONG, TimeUnit.MILLISECONDS);
-        }
-
-        // simulate chance for member to go to Sheoak cafe
-        if (!currentlySheoak && random.nextDouble() < config.chanceSheoak) {
-            // member has gone to Sheoak cafe, responses now instant
-            log.info(config.memberID + " is at Sheoak Café. Responses are instant.");
-            this.currentlySheoak = true; // update currentlySheoak boolean and start reset timer using scheduler
-            scheduler.schedule(() -> {this.currentlySheoak = false;}, TIME_IN_SHEOAK, TimeUnit.MILLISECONDS);
-        }
-
-        // simulate random response delay up to max delay value
-        long currentMinDelay = currentlyCoorong ? TIME_IN_COORONG : 0; // minDelay = TIME_IN_COORONG if currentlyCoorong
-        long currentMaxDelay = currentlySheoak  ? 0 : config.maxDelay; // maxDelay = 0 if currentlySheoak==true
-        long delay = (long)(random.nextDouble() * currentMaxDelay) + currentMinDelay;
-        try {
-            Thread.sleep(delay);
-        } catch (InterruptedException e) {
-            log.error("Error during sleeping for delay simulation - " + e.getMessage());
-            throw new RuntimeException(e);
-        }
-    }
 
     public void handleIncomingMessage(Message message, OutputStream socketOut) {
-        if (this.config.isProposer) simulateNodeDelay(); // simulate coorong/sheoak events for proposers
 
         switch (message.type) {
             // most of the time PROMISE/ACCEPT/REJECT messages will be sent as a response to an open socket, and so they

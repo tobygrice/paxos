@@ -17,10 +17,10 @@ import java.util.concurrent.Executors;
 public class Message {
     // do not serialise:
     private static final Gson gson = new Gson();
+    private static final int MAX_DELAY = 500; // maximum send delay in milliseconds
+    private static final double LOSS_CHANCE = 0.2; // 20% chance of message loss
     private transient final SimpleLogger log = new SimpleLogger("MESSAGE");
     private transient final ExecutorService executor = Executors.newCachedThreadPool();
-    private transient final int MAX_DELAY = 1000; // maximum send delay in milliseconds
-    private transient final double LOSS_CHANCE = 0.2; // 20% chance of message loss
     private transient final Random random = new Random();
 
     // serialise:
