@@ -13,21 +13,33 @@ import java.util.concurrent.TimeUnit;
 
 /* class to simulate a member in the networkInfo. */
 public class Member implements Network.PaxosHandler {
+    // configuration variables
+    protected MemberConfig config;
+
+    // delay simulation variables
+    //      while network delay simulation is in place, be careful not to set RETRY_DELAY below MAX_DELAY of Network class
+    //      also consider coorong simulation, some nodes may take over 2000ms to respond
+    protected static final int RETRY_DELAY = 8000; // time to wait before retrying a proposal
+    protected static final int MAX_RETRIES = 3; // how many times to retry sending a LEARN message
+    protected static final int TIME_IN_SHEOAK = 5000; // time in ms for member to stay at coorong
+    protected static final int TIME_IN_COORONG = 5000; // time in ms for member to stay at coorong
+    protected static final int SIMULATION_FREQUENCY = 1000; // frequency in ms to simulate chance of Coorong/Sheoak state
+
+    // state variables for delay simulation
+    protected boolean currentlyCoorong = false;
+    protected boolean currentlySheoak = false; // boolean variables to indicate coorong/sheoak status
+    protected long coorongStartTime = 0;
+    protected long sheoakStartTime = 0;
 
     // role variables
     private ProposerRole proposer;
     private AcceptorRole acceptor;
     private LearnerRole learner;
 
-    // configuration variables
-    private MemberConfig config;
-    private Network network;
-
-    // delay simulation variables
-
-
     // utility variables
-    private final ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(2);
+    private Network network;
+    protected final Random random = new Random();
+    private final ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(3);
     private final SimpleLogger log = new SimpleLogger("MEMBER");
 
     public Member(MemberConfig config) {
@@ -39,26 +51,23 @@ public class Member implements Network.PaxosHandler {
     }
 
     public void start(boolean proposerAcceptsStdin) {
+        log.info("Starting Member");
         this.proposer = config.isProposer ? new Proposer(config, proposerAcceptsStdin) : null;
         this.acceptor = config.isAcceptor ? new Acceptor(config) : null;
         this.learner  = config.isLearner  ? new Learner(config)  : null;
         this.network = new Network(config.port, this);
         this.network.start();
+        scheduler.scheduleAtFixedRate(this::simulateSheoakCoorong, SIMULATION_FREQUENCY, SIMULATION_FREQUENCY, TimeUnit.MILLISECONDS);
     }
 
     public void shutdown() {
-        try {
-            // shutdown networkInfo
-            if (network != null) network.shutdown();
-        } catch (Exception ex) {
-            log.error("Error during shutdown - " + ex.getMessage());
-        }
+        if (network != null) network.shutdown();
+        if (proposer != null) proposer.shutdown();
+        scheduler.shutdownNow(); // shutdown scheduler
+        log.info("Shutdown complete");
     }
 
-
-
     public void handleIncomingMessage(Message message, OutputStream socketOut) {
-
         switch (message.type) {
             // most of the time PROMISE/ACCEPT/REJECT messages will be sent as a response to an open socket, and so they
             // will not reach this handler. They are included here in case the sender needs to resend the message.
@@ -85,6 +94,82 @@ public class Member implements Network.PaxosHandler {
                 break;
             default:
                 log.warn("Incoming incompatible message type: " + message.type);
+        }
+    }
+
+    /**
+     * Method to simulate chance of a state change to Sheoak or Coorong. Called every SIMULATION_FREQUENCY ms
+     *     This function was written with the assistance of AI
+     */
+    private void simulateSheoakCoorong() {
+
+        long currentTime = System.currentTimeMillis();
+
+        // simulate chance for member to go camping in the Coorong
+        if (!currentlyCoorong && !currentlySheoak && random.nextDouble() < (config.chanceCoorong)) {
+            // Member has gone camping in the Coorong, now unreachable
+            log.info(config.memberID + " is camping in the Coorong. They are unreachable");
+            currentlyCoorong = true;
+            coorongStartTime = currentTime;
+
+            // exit Coorong after TIME_IN_COORONG ms
+            scheduler.schedule(() -> {
+                synchronized (this) {
+                    currentlyCoorong = false;
+                    coorongStartTime = 0;
+                    log.info(config.memberID + " has returned from the Coorong");
+                }
+            }, TIME_IN_COORONG, TimeUnit.MILLISECONDS);
+        }
+
+        // simulate chance for member to work at Sheoak cafe
+        else if (!currentlyCoorong && !currentlySheoak && random.nextDouble() < config.chanceSheoak) {
+            // Member has gone to Sheoak cafe, responses now instant
+            log.info(config.memberID + " is at Sheoak cafe. Responses are now instant");
+            currentlySheoak = true;
+            sheoakStartTime = currentTime;
+
+            // Schedule to exit Sheoak Café after TIME_IN_SHEOAK milliseconds
+            scheduler.schedule(() -> {
+                synchronized (this) {
+                    currentlySheoak = false;
+                    sheoakStartTime = 0;
+                    log.info(config.memberID + " has left Sheoak cafe");
+                }
+            }, TIME_IN_SHEOAK, TimeUnit.MILLISECONDS);
+        }
+    }
+
+    /**
+     * Method to simulate delay (or lack thereof) for a proposer node according to Sheoak or Coorong status
+     */
+    protected void simulateNodeDelay() {
+        long currentTime = System.currentTimeMillis();
+
+        // calculate delay based on current state:
+        long delay;
+        if (currentlySheoak) {
+            // instant response
+            log.info("Currently sheoak, instant response");
+            delay = 0;
+        } else if (currentlyCoorong) {
+            // delay until TIME_IN_COORONG has passed (since entering)
+            long elapsed = currentTime - coorongStartTime;
+            delay = TIME_IN_COORONG - elapsed;
+            log.info("Currently Coorong, not responding for another " + delay + " ms");
+        } else {
+            // normal operation: random delay up to maxDelay
+            delay = (long) (random.nextDouble() * config.maxDelay);
+            log.info("Neither, standard delay of " + delay + " ms");
+        }
+
+        if (delay > 0) {
+            try {
+                Thread.sleep(delay);
+            } catch (InterruptedException ex) {
+                log.error("Error during sleeping for delay simulation - " + ex.getMessage());
+                throw new RuntimeException(ex);
+            }
         }
     }
 

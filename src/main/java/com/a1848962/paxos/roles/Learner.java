@@ -15,14 +15,13 @@ interface LearnerRole {
 // All members are learners. For this assignment, all members are also acceptors,
 // but this is not a requirement of Paxos. Therefore, I have seperated the learner/acceptor
 // classes.
-public class Learner implements LearnerRole {
-    private final MemberConfig config;
+public class Learner extends Member implements LearnerRole {
     private final StringBuffer learnedValue;
 
     private final SimpleLogger log = new SimpleLogger("LEARNER");
 
     public Learner(MemberConfig config) {
-        this.config = config;
+        super(config);
         learnedValue = new StringBuffer();
     }
 
@@ -30,8 +29,13 @@ public class Learner implements LearnerRole {
         return learnedValue.toString();
     }
 
+    @Override // don't want Learner objects to handle incoming messages
+    public void handleIncomingMessage(Message message, OutputStream socketOut) {}
+
     @Override
     public void handleLearn(Message message, OutputStream socketOut) {
+        simulateNodeDelay(); // simulate Coorong/Sheoak delays
+
         log.info("Handling LEARN request from " + message.senderID);
 
         if (message.value != null) {

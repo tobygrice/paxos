@@ -13,8 +13,7 @@ interface AcceptorRole {
     void handleAcceptRequest(Message message, OutputStream socketOut);
 }
 
-public class Acceptor implements AcceptorRole {
-    private final MemberConfig config;
+public class Acceptor extends Member implements AcceptorRole {
 
     // thread-safe data types to store the highest promised proposal, highest accepted proposal and its associated value
     private final AtomicInteger highestPromise = new AtomicInteger();
@@ -25,8 +24,11 @@ public class Acceptor implements AcceptorRole {
     private final SimpleLogger log = new SimpleLogger("ACCEPTOR");
 
     public Acceptor(MemberConfig config) {
-        this.config = config;
+        super(config);
     }
+
+    @Override // don't want Acceptor objects to handle incoming messages
+    public void handleIncomingMessage(Message message, OutputStream socketOut) {}
 
     @Override
     public void handlePrepareRequest(Message message, OutputStream socketOut) {
@@ -36,7 +38,11 @@ public class Acceptor implements AcceptorRole {
             - send **_prepare-ok_**
            Otherwise, ignore
          */
+
+        simulateNodeDelay(); // simulate Coorong/Sheoak delays
+
         log.info("Handling PREPARE request from " + message.senderID);
+
         Message response = null; // initialise response message
         // parse incoming senderID and current promised ID to integer for comparison
         int incomingProposerID = Integer.parseInt(message.senderID.substring(1));
@@ -75,6 +81,9 @@ public class Acceptor implements AcceptorRole {
         - **if and only if** it has not already promised to only consider proposals having an identifier greater than n -> also implies acceptor considers proposer LEADER.
         - If it has, respond with **accept-reject**
          */
+
+        simulateNodeDelay(); // simulate Coorong/Sheoak delays
+
         log.info("Handling ACCEPT request from " + message.senderID);
 
         Message response = null;

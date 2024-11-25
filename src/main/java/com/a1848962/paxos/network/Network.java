@@ -90,18 +90,14 @@ public class Network {
      * Shuts down the executor service gracefully.
      */
     public void shutdown() {
-        try {
-            if (serverSocket != null && !serverSocket.isClosed()) {
+        if (serverSocket != null && !serverSocket.isClosed()) {
+            try {
                 serverSocket.close();
+            } catch (IOException e) {
+                throw new RuntimeException(e);
             }
-            executor.shutdown();
-            if (!executor.awaitTermination(5, TimeUnit.SECONDS)) {
-                executor.shutdownNow();
-            }
-        } catch (Exception ex) {
-            log.error("Network: Error during shutdown - " + ex.getMessage());
-            executor.shutdownNow();
-            Thread.currentThread().interrupt();
         }
+        executor.shutdownNow();
+        log.info("Network shutdown complete");
     }
 }

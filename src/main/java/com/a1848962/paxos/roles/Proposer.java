@@ -6,7 +6,7 @@ import com.a1848962.paxos.utils.*;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
-import java.util.Random;
+import java.io.OutputStream;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -16,27 +16,13 @@ interface ProposerRole {
     void handlePrepareReqResponse(Message response);
     void handleAcceptReqResponse(Message response);
     void handleRejectResponse(Message response);
+    void shutdown();
 }
 
 /**
  * Proposer class to make propositions and orchestrate Paxos protocol. Implements proposer role.
  */
-public class Proposer implements ProposerRole {
-    private final MemberConfig config;
-
-    // delay simulation variables
-    //      while network delay simulation is in place, be careful not to set RETRY_DELAY below MAX_DELAY of Network class
-    //      also consider coorong simulation, some nodes may take over 2000ms to respond
-    private static final int RETRY_DELAY = 8000; // retry proposal after 8 seconds
-    private static final int MAX_RETRIES = 3; // how many times to retry sending a LEARN message
-    private static final int TIME_IN_SHEOAK = 2000; // member will stay at sheoak for 2 seconds
-    private static final int TIME_IN_COORONG = 2000; // member will stay at coorong for 2 seconds
-
-    // state variables for delay simulation
-    private volatile boolean currentlyCoorong = false;
-    private volatile boolean currentlySheoak = false; // boolean variables to indicate coorong/sheoak status
-    private volatile long coorongStartTime = 0;
-    private volatile long sheoakStartTime = 0;
+public class Proposer extends Member implements ProposerRole {
 
     // proposal variables
     private final AtomicInteger proposalCounter = new AtomicInteger(0);
@@ -45,19 +31,19 @@ public class Proposer implements ProposerRole {
     private final int majority;
 
     // utility variables
-    private final ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor();
+    private final ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(2);
     private final ExecutorService executor = Executors.newCachedThreadPool();
     private final SimpleLogger log = new SimpleLogger("PROPOSER");
-    protected final Random random = new Random();
-
 
     public Proposer(MemberConfig config, boolean listenStdin) {
-        this.config = config;
+        super(config);
         this.preferredLeader = config.memberID;
         this.majority = (config.networkInfo.size() / 2) + 1; // calculate majority required for consensus
         if (listenStdin) listenStdin();
     }
 
+    @Override // don't want Proposer objects to handle incoming messages
+    public void handleIncomingMessage(Message message, OutputStream socketOut) {}
 
     /**
      * Starts Paxos protocol by broadcasting a prepare request. Node will attempt to propose itself as councillor.
@@ -76,72 +62,6 @@ public class Proposer implements ProposerRole {
     public void propose(String target) {
         this.preferredLeader = target;
         sendPrepareRequest();
-    }
-
-    /**
-     * Function to simulate delay (or lack thereof) for a proposer node according to Sheoak or Coorong status
-     *     This function written with the assistance of AI
-     */
-    private void simulateNodeDelay() {
-        long currentTime = System.currentTimeMillis();
-
-        // simulate chance for member to go camping in the Coorong
-        if (!currentlyCoorong && !currentlySheoak && random.nextDouble() < (config.chanceCoorong)) {
-            // Member has gone camping in the Coorong, now unreachable
-            log.info(config.memberID + " is camping in the Coorong. They are unreachable");
-            currentlyCoorong = true;
-            coorongStartTime = currentTime;
-
-            // exit Coorong after TIME_IN_COORONG ms
-            scheduler.schedule(() -> {
-                synchronized (this) {
-                    currentlyCoorong = false;
-                    coorongStartTime = 0;
-                    log.info(config.memberID + " has returned from the Coorong");
-                }
-            }, TIME_IN_COORONG, TimeUnit.MILLISECONDS);
-        }
-
-        // simulate chance for member to work at Sheoak cafe
-        else if (!currentlyCoorong && !currentlySheoak && random.nextDouble() < config.chanceSheoak) {
-            // Member has gone to Sheoak cafe, responses now instant
-            log.info(config.memberID + " is at Sheoak cafe. Responses are now instant");
-            currentlySheoak = true;
-            sheoakStartTime = currentTime;
-
-            // Schedule to exit Sheoak Café after TIME_IN_SHEOAK milliseconds
-            scheduler.schedule(() -> {
-                synchronized (this) {
-                    currentlySheoak = false;
-                    sheoakStartTime = 0;
-                    log.info(config.memberID + " has left Sheoak cafe");
-                }
-            }, TIME_IN_SHEOAK, TimeUnit.MILLISECONDS);
-        }
-
-        // Calculate delay based on current state
-        long delay;
-
-        if (currentlySheoak) {
-            // instant response
-            delay = 0;
-        } else if (currentlyCoorong) {
-            // delay until TIME_IN_COORONG has passed (since entering)
-            long elapsed = currentTime - coorongStartTime;
-            delay = TIME_IN_COORONG - elapsed;
-        } else {
-            // normal operation: random delay up to maxDelay
-            delay = (long) (random.nextDouble() * config.maxDelay);
-        }
-
-        if (delay > 0) {
-            try {
-                Thread.sleep(delay);
-            } catch (InterruptedException ex) {
-                log.error("Error during sleeping for delay simulation - " + ex.getMessage());
-                throw new RuntimeException(ex);
-            }
-        }
     }
 
     /**
@@ -192,7 +112,7 @@ public class Proposer implements ProposerRole {
      */
     @Override
     public void handlePrepareReqResponse(Message response) {
-        simulateNodeDelay(); // simulate Coorong/Sheoak status and node delay
+        simulateNodeDelay(); // simulate Coorong/Sheoak delays
 
         int proposalNumber = response.proposalNumber;
         Proposal proposal = activeProposals.get(proposalNumber);
@@ -281,7 +201,7 @@ public class Proposer implements ProposerRole {
 
     @Override
     public void handleAcceptReqResponse(Message response) {
-        simulateNodeDelay(); // simulate Coorong/Sheoak status and node delay
+        simulateNodeDelay(); // simulate Coorong/Sheoak delays
 
         int proposalNumber = response.proposalNumber;
         Proposal proposal = activeProposals.get(proposalNumber);
@@ -444,10 +364,10 @@ public class Proposer implements ProposerRole {
         });
     }
 
+    @Override
     public void shutdown() {
         executor.shutdownNow(); // shutdown executor
         scheduler.shutdownNow(); // shutdown scheduler
-        log.info("Shutdown complete");
-        System.exit(0);
+        log.info("Proposer shutdown complete");
     }
 }
