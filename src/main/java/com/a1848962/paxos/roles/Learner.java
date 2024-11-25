@@ -20,7 +20,7 @@ public class Learner implements LearnerRole {
 
     private final StringBuffer learnedValue;
 
-    private final SimpleLogger log = new SimpleLogger("LEARNER");
+    private static final SimpleLogger log = new SimpleLogger("LEARNER");
 
     public Learner(Member member) {
         this.member = member;
@@ -40,15 +40,15 @@ public class Learner implements LearnerRole {
             throw new RuntimeException(e);
         }
 
-        log.info("Handling LEARN request from " + message.senderID);
+        log.info(member.config.memberID + ": Handling LEARN request from " + message.senderID);
 
         if (message.value != null) {
             learnedValue.setLength(0);
             learnedValue.append(message.value);
-            log.info("Learned from " + message.senderID + " elected councillor: " + getLearnedValue());
+            log.info(member.config.memberID + ": Learned from " + message.senderID + " elected councillor: " + getLearnedValue());
             sendAck(socketOut);
         } else {
-            log.warn("Learner node instructed to learn null value by " + message.senderID);
+            log.info(member.config.memberID + ": Learner node instructed to learn null value by " + message.senderID);
             sendNack(socketOut);
         }
     }
@@ -59,7 +59,7 @@ public class Learner implements LearnerRole {
             socketOut.write(ack.marshall().getBytes());
             socketOut.flush();
         } catch (IOException ex) {
-            log.error("Error sending ACK - " + ex.getMessage());
+            log.info(member.config.memberID + ": Error sending ACK - " + ex.getMessage());
         }
     }
 
@@ -69,7 +69,7 @@ public class Learner implements LearnerRole {
             socketOut.write(nack.marshall().getBytes());
             socketOut.flush();
         } catch (IOException ex) {
-            log.error("Error sending NACK - " + ex.getMessage());
+            log.info(member.config.memberID + ": Error sending NACK - " + ex.getMessage());
         }
     }
 }

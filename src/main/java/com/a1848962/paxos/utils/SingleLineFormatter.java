@@ -29,7 +29,7 @@ public class SingleLineFormatter extends Formatter {
 
         // append log level
         sb.append(record.getLevel().getName());
-        sb.append(": ");
+        sb.append(" ");
 
         // append log message
         sb.append(formatMessage(record));

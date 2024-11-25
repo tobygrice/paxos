@@ -22,7 +22,7 @@ public class Acceptor implements AcceptorRole {
     private final StringBuilder acceptedValue = new StringBuilder();
 
     private final Object promiseLock = new Object(); // lock to ensure atomicity
-    private final SimpleLogger log = new SimpleLogger("ACCEPTOR");
+    private static final SimpleLogger log = new SimpleLogger("ACCEPTOR");
 
     public Acceptor(Member member) {
         this.member = member;
@@ -44,7 +44,7 @@ public class Acceptor implements AcceptorRole {
             throw new RuntimeException(e);
         }
 
-        log.info("Handling PREPARE request from " + message.senderID);
+        log.info(member.config.memberID + ": Handling PREPARE request from " + message.senderID);
 
         Message response = null; // initialise response message
         // parse incoming senderID and current promised ID to integer for comparison
@@ -92,7 +92,7 @@ public class Acceptor implements AcceptorRole {
             throw new RuntimeException(e);
         }
 
-        log.info("Handling ACCEPT request from " + message.senderID);
+        log.info(member.config.memberID + ": Handling ACCEPT request from " + message.senderID);
 
         Message response = null;
         int incomingProposerID = Integer.parseInt(message.senderID.substring(1));
@@ -109,7 +109,7 @@ public class Acceptor implements AcceptorRole {
                 acceptedValue.append(message.value);
 
                 response = Message.accept(message.proposalNumber, member.config.memberID, message.value);
-                log.info("Sending ACCEPT for proposal " + message.proposalNumber);
+                log.info(member.config.memberID + ": Sending ACCEPT for proposal " + message.proposalNumber);
             } else if (highestPromise.get() == message.proposalNumber && incomingProposerID < currentPromisedProposerID) {
                 // same proposalID and is the original proposer, or incoming proposer has a lower memberID (higher priority)
                 // send accept:
@@ -119,7 +119,7 @@ public class Acceptor implements AcceptorRole {
                 acceptedValue.append(message.value);
 
                 response = Message.accept(message.proposalNumber, member.config.memberID, message.value);
-                log.info("Sending ACCEPT for proposal " + message.proposalNumber + " from higher priority proposer " + message.senderID);
+                log.info(member.config.memberID + ": Sending ACCEPT for proposal " + message.proposalNumber + " from higher priority proposer " + message.senderID);
             } else {
                 // either proposalNumber < highestPromise or same proposalNumber but higher proposerID
                 // send reject:
@@ -132,24 +132,24 @@ public class Acceptor implements AcceptorRole {
 
     private Message createPromiseMessage(Message message, int previousHighestPromise) {
         if (acceptedValue.length() > 0) {
-            log.info("Sending PROMISE for proposal " + message.proposalNumber
+            log.info(member.config.memberID + ": Sending PROMISE for proposal " + message.proposalNumber
                     + " with previously accepted value '" + acceptedValue + "' from proposal " + previousHighestPromise);
             return Message.promise(message.proposalNumber, member.config.memberID, previousHighestPromise, acceptedValue.toString());
         } else {
-            log.info("Sending PROMISE for proposal " + message.proposalNumber + " with no previously accepted value");
+            log.info(member.config.memberID + ": Sending PROMISE for proposal " + message.proposalNumber + " with no previously accepted value");
             return Message.promise(message.proposalNumber, member.config.memberID);
         }
     }
 
     private Message createRejectMessage(Message message) {
         if (acceptedValue.length() > 0) {
-            log.info("Rejecting " + message.type + " from " + message.senderID
+            log.info(member.config.memberID + ": Rejecting " + message.type + " from " + message.senderID
                     + " for proposal " + message.proposalNumber
                     + " due to already promising proposal " + highestPromise.get()
                     + ". Including previously accepted value '" + acceptedValue + "'");
             return Message.reject(message.proposalNumber, member.config.memberID, highestPromise.get(), acceptedValue.toString());
         } else {
-            log.info("Rejecting " + message.type + " from " + message.senderID
+            log.info(member.config.memberID + ": Rejecting " + message.type + " from " + message.senderID
                     + " for proposal " + message.proposalNumber
                     + " due to already promising proposal " + highestPromise.get()
                     + ". No previously accepted value to include");
@@ -162,7 +162,7 @@ public class Acceptor implements AcceptorRole {
             socketOut.write(response.marshall().getBytes());
             socketOut.flush();
         } catch (IOException ex) {
-            log.error("Error writing response: " + ex.getMessage());
+            log.info(member.config.memberID + ": Error writing response: " + ex.getMessage());
             throw new RuntimeException(ex);
         }
     }

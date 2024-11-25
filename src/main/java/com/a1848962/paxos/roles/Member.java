@@ -19,9 +19,9 @@ public class Member implements Network.PaxosHandler {
     // delay simulation variables
     //      while network delay simulation is in place, be careful not to set RETRY_DELAY below MAX_DELAY of Network class
     //      also consider coorong simulation, some nodes may take over 2000ms to respond
-    protected static final int TIME_IN_SHEOAK = 10000; // time in ms for member to stay at coorong
-    protected static final int TIME_IN_COORONG = 10000; // time in ms for member to stay at coorong
-    protected static final int SIMULATION_FREQUENCY = 2000; // frequency in ms to simulate chance of Coorong/Sheoak state
+    protected static final int TIME_IN_SHEOAK = 3000; // time in ms for member to stay at coorong
+    protected static final int TIME_IN_COORONG = 3000; // time in ms for member to stay at coorong
+    protected static final int SIMULATION_FREQUENCY = 1000; // frequency in ms to simulate chance of Coorong/Sheoak state
 
     // state variables for delay simulation
     protected boolean currentlyCoorong = false;
@@ -38,7 +38,7 @@ public class Member implements Network.PaxosHandler {
     private Network network;
     protected final Random random = new Random();
     private final ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(3);
-    private final SimpleLogger log = new SimpleLogger("MEMBER");
+    private static final SimpleLogger log = new SimpleLogger("MEMBER");
 
     public Member(MemberConfig config) {
         this.config = config;
@@ -56,6 +56,16 @@ public class Member implements Network.PaxosHandler {
         this.network = new Network(config.port, this);
         this.network.start();
         scheduler.scheduleAtFixedRate(this::simulateSheoakCoorong, SIMULATION_FREQUENCY, SIMULATION_FREQUENCY, TimeUnit.MILLISECONDS);
+    }
+
+    public LearnerRole getLearner() {
+        return learner;
+    }
+    public AcceptorRole getAcceptor() {
+        return acceptor;
+    }
+    public ProposerRole getProposer() {
+        return proposer;
     }
 
     public void shutdown() {

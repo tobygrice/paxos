@@ -18,7 +18,7 @@ import org.slf4j.LoggerFactory;
 // This infrastructure class was written with the assistance of AI
 public class Network {
 
-    private final SimpleLogger log = new SimpleLogger("NETWORK");
+    private static final SimpleLogger log = new SimpleLogger("NETWORK");
     private final ExecutorService executor = Executors.newCachedThreadPool();
 
     private ServerSocket serverSocket;

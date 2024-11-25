@@ -15,7 +15,7 @@ public class MemberConfig {
     public final boolean isLearner;
     public final boolean isAcceptor;
     public final boolean isProposer;
-    public final long maxDelay;
+    public long maxDelay;
     public final double reliability;
     public final double chanceSheoak;
     public final double chanceCoorong;
