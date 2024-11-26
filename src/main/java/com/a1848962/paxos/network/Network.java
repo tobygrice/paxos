@@ -27,6 +27,20 @@ public class Network {
     private final PaxosHandler handler;
 
     /**
+     * Silences log output
+     */
+    public void silence() {
+        log.silence();
+    }
+
+    /**
+     * Unsilences log output
+     */
+    public void unsilence() {
+        log.unsilence();
+    }
+
+    /**
      * Interface to handle received messages. This is my first attempt at using an interface.
      */
     public interface PaxosHandler {
@@ -98,6 +112,14 @@ public class Network {
             }
         }
         executor.shutdownNow();
+        try {
+            if (!executor.awaitTermination(5, TimeUnit.SECONDS)) {
+                log.warn("Executor did not terminate in the specified time.");
+            }
+        } catch (InterruptedException e) {
+            log.error("Interrupted during executor shutdown.");
+            Thread.currentThread().interrupt();
+        }
         log.info("Network shutdown complete");
     }
 }

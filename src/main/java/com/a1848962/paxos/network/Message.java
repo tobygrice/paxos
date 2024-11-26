@@ -5,7 +5,6 @@ import com.a1848962.paxos.utils.SimpleLogger;
 import com.google.gson.Gson;
 
 import java.io.BufferedReader;
-import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.net.Socket;
@@ -17,8 +16,8 @@ import java.util.concurrent.Executors;
 public class Message {
     // do not serialise:
     private static final Gson gson = new Gson();
-    private static final int MAX_DELAY = 200; // maximum send delay in milliseconds
-    private static final double LOSS_CHANCE = 0.15; // 15% chance of message loss
+    public static int MAX_DELAY = 50; // maximum send delay in milliseconds
+    public static double LOSS_CHANCE = 0.15; // 15% chance of message loss
     private static final ExecutorService executor = Executors.newCachedThreadPool();
     private static final SimpleLogger log = new SimpleLogger("MESSAGE");
     private static final Random random = new Random();

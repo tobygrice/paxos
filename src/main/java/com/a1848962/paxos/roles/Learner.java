@@ -10,6 +10,8 @@ import java.io.OutputStream;
 interface LearnerRole {
     String getLearnedValue();
     void handleLearn(Message message, OutputStream socketOut);
+    void silence();
+    void unsilence();
 }
 
 // All members are learners. For this assignment, all members are also acceptors,
@@ -31,6 +33,21 @@ public class Learner implements LearnerRole {
         return learnedValue.toString();
     }
 
+    /**
+     * Silences log output
+     */
+    @Override
+    public void silence() {
+        log.silence();
+    }
+
+    /**
+     * Unsilences log output
+     */
+    @Override
+    public void unsilence() {
+        log.unsilence();
+    }
     @Override
     public void handleLearn(Message message, OutputStream socketOut) {
         // simulate Coorong/Sheoak delays

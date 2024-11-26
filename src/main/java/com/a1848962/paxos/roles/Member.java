@@ -37,6 +37,7 @@ public class Member implements Network.PaxosHandler {
     // utility variables
     private Network network;
     protected final Random random = new Random();
+    private final ScheduledExecutorService simulationScheduler = Executors.newSingleThreadScheduledExecutor();
     private final ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(3);
     private static final SimpleLogger log = new SimpleLogger("MEMBER");
 
@@ -44,18 +45,58 @@ public class Member implements Network.PaxosHandler {
         this.config = config;
     }
 
-    public void start() {
-        start(false);
+    /**
+     * Silences log output for Member, network, and all role objects
+     */
+    public void silence() {
+        if (this.proposer != null) proposer.silence();
+        if (this.acceptor != null) acceptor.silence();
+        if (this.learner != null) learner.silence();
+        if (this.network != null) network.silence();
+        log.silence();
     }
 
-    public void start(boolean proposerAcceptsStdin) {
-        log.info("Starting Member");
+    public void unsilence() {
+        if (this.proposer != null) proposer.unsilence();
+        if (this.acceptor != null) acceptor.unsilence();
+        if (this.learner != null) learner.unsilence();
+        if (this.network != null) network.unsilence();
+        log.unsilence();
+    }
+
+    /**
+     * Default start function for Member. Instantiates role objects as required and starts network to listen for
+     * messages. By default, proposer nodes will not accept stdin, and the Coorong/Sheoak simulation will not be run.
+     * To change this, use: start(boolean proposerAcceptsStdin, boolean simulateSheoakCoorong)
+     */
+    public void start() {
+        start(false, false);
+    }
+
+    /**
+     * Default start function for Member. Instantiates role objects as required and starts network to listen for
+     * messages.
+     *
+     * @param proposerAcceptsStdin      proposer nodes should accept `propose` commands from stdin
+     * @param simulateSheoakCoorong     sheoak/coorong simulation should be run
+     */
+    public void start(boolean proposerAcceptsStdin, boolean simulateSheoakCoorong) {
+        log.info(config.memberID + ": Starting Member");
         this.proposer = config.isProposer ? new Proposer(this, proposerAcceptsStdin) : null;
         this.acceptor = config.isAcceptor ? new Acceptor(this) : null;
         this.learner  = config.isLearner  ? new Learner(this)  : null;
         this.network = new Network(config.port, this);
         this.network.start();
-        scheduler.scheduleAtFixedRate(this::simulateSheoakCoorong, SIMULATION_FREQUENCY, SIMULATION_FREQUENCY, TimeUnit.MILLISECONDS);
+        if (simulateSheoakCoorong) startSheoakCoorongSimulation();
+    }
+
+    public void startSheoakCoorongSimulation() {
+        log.info(config.memberID + ": Starting Sheoak cafe / Coorong simulation");
+        simulationScheduler.scheduleAtFixedRate(this::simulateSheoakCoorong, 0, SIMULATION_FREQUENCY, TimeUnit.MILLISECONDS);
+    }
+    public void stopSheoakCoorongSimulation() {
+        log.info(config.memberID + ": Stopping Sheoak cafe / Coorong simulation");
+        simulationScheduler.shutdownNow();
     }
 
     public LearnerRole getLearner() {
@@ -71,8 +112,9 @@ public class Member implements Network.PaxosHandler {
     public void shutdown() {
         if (network != null) network.shutdown();
         if (proposer != null) proposer.shutdown();
+        simulationScheduler.shutdownNow();
         scheduler.shutdownNow(); // shutdown scheduler
-        log.info("Shutdown complete");
+        log.info(config.memberID + ": Shutdown complete");
     }
 
     public void handleIncomingMessage(Message message, OutputStream socketOut) {
@@ -101,50 +143,58 @@ public class Member implements Network.PaxosHandler {
                 if (learner != null) learner.handleLearn(message, socketOut);
                 break;
             default:
-                log.warn("Incoming incompatible message type: " + message.type);
+                log.warn(config.memberID + ": Incoming incompatible message type: " + message.type);
         }
     }
+
+    synchronized public void forceCoorong(boolean value, long time) {
+        if (value) {
+            // Member has gone camping in the Coorong, now unreachable
+            log.info(config.memberID + " is camping in the Coorong. They are unreachable");
+
+            currentlyCoorong = true;
+            coorongStartTime = System.currentTimeMillis();
+
+            // exit Coorong after `time` ms
+            scheduler.schedule(() -> forceCoorong(false, 0), time, TimeUnit.MILLISECONDS);
+        } else {
+            currentlyCoorong = false;
+            coorongStartTime = 0;
+            log.info(config.memberID + " has returned from the Coorong");
+        }
+    }
+
+    synchronized public void forceSheoak(Boolean value, long time) {
+        if (value) {
+            // Member has gone to Sheoak cafe, responses now instant
+            log.info(config.memberID + " is at Sheoak cafe. Responses are now instant");
+
+            currentlySheoak = true;
+            sheoakStartTime = System.currentTimeMillis();
+
+            // Schedule to exit Sheoak Café after `time` milliseconds
+            scheduler.schedule(() -> forceSheoak(false, 0), time, TimeUnit.MILLISECONDS);
+        } else {
+            currentlySheoak = false;
+            sheoakStartTime = 0;
+            log.info(config.memberID + " has left Sheoak cafe");
+        }
+    }
+
 
     /**
      * Method to simulate chance of a state change to Sheoak or Coorong. Called every SIMULATION_FREQUENCY ms
      *     This function was written with the assistance of AI
      */
     private void simulateSheoakCoorong() {
-
-        long currentTime = System.currentTimeMillis();
-
         // simulate chance for member to go camping in the Coorong
         if (!currentlyCoorong && !currentlySheoak && random.nextDouble() < (config.chanceCoorong)) {
-            // Member has gone camping in the Coorong, now unreachable
-            log.info(config.memberID + " is camping in the Coorong. They are unreachable");
-            currentlyCoorong = true;
-            coorongStartTime = currentTime;
-
-            // exit Coorong after TIME_IN_COORONG ms
-            scheduler.schedule(() -> {
-                synchronized (this) {
-                    currentlyCoorong = false;
-                    coorongStartTime = 0;
-                    log.info(config.memberID + " has returned from the Coorong");
-                }
-            }, TIME_IN_COORONG, TimeUnit.MILLISECONDS);
+            forceCoorong(true, TIME_IN_COORONG);
         }
 
         // simulate chance for member to work at Sheoak cafe
         else if (!currentlyCoorong && !currentlySheoak && random.nextDouble() < config.chanceSheoak) {
-            // Member has gone to Sheoak cafe, responses now instant
-            log.info(config.memberID + " is at Sheoak cafe. Responses are now instant");
-            currentlySheoak = true;
-            sheoakStartTime = currentTime;
-
-            // Schedule to exit Sheoak Café after TIME_IN_SHEOAK milliseconds
-            scheduler.schedule(() -> {
-                synchronized (this) {
-                    currentlySheoak = false;
-                    sheoakStartTime = 0;
-                    log.info(config.memberID + " has left Sheoak cafe");
-                }
-            }, TIME_IN_SHEOAK, TimeUnit.MILLISECONDS);
+            forceSheoak(true, TIME_IN_SHEOAK);
         }
     }
 
@@ -163,7 +213,7 @@ public class Member implements Network.PaxosHandler {
             // delay until TIME_IN_COORONG has passed (since entering)
             long elapsed = currentTime - coorongStartTime;
             delay = TIME_IN_COORONG - elapsed;
-            log.info("Currently Coorong, not responding for another " + delay + " ms");
+            log.info(config.memberID + ": Currently Coorong, not responding for another " + delay + " ms");
         } else {
             // normal operation: random delay up to maxDelay
             delay = (long) (random.nextDouble() * config.maxDelay);
@@ -186,6 +236,6 @@ public class Member implements Network.PaxosHandler {
         // create config object to parse role from member.properties
         MemberConfig config = new MemberConfig(args[0]);
         Member member = new Member(config);
-        member.start(true);
+        member.start(true, true);
     }
 }

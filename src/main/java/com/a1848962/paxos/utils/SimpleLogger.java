@@ -1,8 +1,5 @@
 package com.a1848962.paxos.utils;
 
-import java.io.IOException;
-import java.io.OutputStream;
-import java.io.PrintStream;
 import java.util.logging.*;
 
 /**
@@ -44,5 +41,13 @@ public class SimpleLogger {
 
     public synchronized void error(String message) {
         logger.log(Level.SEVERE, message);
+    }
+
+    public synchronized void silence() {
+        logger.setLevel(Level.OFF);
+    }
+
+    public synchronized void unsilence() {
+        logger.setLevel(Level.ALL);
     }
 }

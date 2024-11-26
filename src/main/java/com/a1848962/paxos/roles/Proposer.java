@@ -12,6 +12,8 @@ import java.util.concurrent.atomic.AtomicInteger;
 interface ProposerRole {
     void propose();
     void propose(String target);
+    void silence();
+    void unsilence();
     void handlePrepareReqResponse(Message response);
     void handleAcceptReqResponse(Message response);
     void handleRejectResponse(Message response);
@@ -38,6 +40,7 @@ public class Proposer implements ProposerRole {
     private final ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor();
     private final ExecutorService executor = Executors.newCachedThreadPool();
     private static final SimpleLogger log = new SimpleLogger("PROPOSER");
+    private volatile boolean isShutDown = false;
 
     public Proposer(Member member, boolean listenStdin) {
         this.member = member;
@@ -66,9 +69,26 @@ public class Proposer implements ProposerRole {
     }
 
     /**
+     * Silences log output
+     */
+    @Override
+    public void silence() {
+        log.silence();
+    }
+
+    /**
+     * Unsilences log output
+     */
+    @Override
+    public void unsilence() {
+        log.unsilence();
+    }
+
+    /**
      * Broadcasts a PREPARE_REQ message to all nodes (including self). Response is handled by handlePrepareReqResponse.
      */
     private void sendPrepareRequest() {
+        if (isShutDown) return;
         int currentProposalNum = proposalCounter.incrementAndGet();
         log.info(member.config.memberID + ": Broadcasting PREPARE_REQ with proposal number " + currentProposalNum);
 
@@ -82,6 +102,7 @@ public class Proposer implements ProposerRole {
             if (memberInfo.isAcceptor) {
                 // use sendMessage function of Network to send message to a ServerSocket. Returns a
                 // CompletableFuture<Message> object which is passed to handlePrepareReqResponse()
+                if (isShutDown) return;
                 prepare.send(memberInfo.address, memberInfo.port)
                         .thenAccept(this::handlePrepareReqResponse)
                         .exceptionally(ex -> {
@@ -113,6 +134,8 @@ public class Proposer implements ProposerRole {
      */
     @Override
     public void handlePrepareReqResponse(Message response) {
+        if (isShutDown) return;
+
         // simulate Coorong/Sheoak delays
         try {
             Thread.sleep(member.simulateNodeDelay());
@@ -168,6 +191,8 @@ public class Proposer implements ProposerRole {
     }
 
     private void sendAcceptRequest(Proposal proposal) {
+        if (isShutDown) return;
+
         /*
         If a proposer receives enough PROMISEs from a majority, it needs to set a value to its proposal
         - If any acceptors had sent a value and proposal number to the proposer, then proposer sets the value of its proposal to the **value associated with the highest proposal number** reported by the acceptors
@@ -192,6 +217,7 @@ public class Proposer implements ProposerRole {
         // send to all acceptors in the networkInfo:
         for (MemberConfig.MemberInfo memberInfo : this.member.config.networkInfo.values()) {
             if (memberInfo.isAcceptor) {
+                if (isShutDown) return;
                 acceptRequest.send(memberInfo.address, memberInfo.port)
                         .thenAccept(this::handleAcceptReqResponse)
                         .exceptionally(ex -> {
@@ -208,6 +234,8 @@ public class Proposer implements ProposerRole {
 
     @Override
     public void handleAcceptReqResponse(Message response) {
+        if (isShutDown) return;
+
         // simulate Coorong/Sheoak delays
         try {
             Thread.sleep(member.simulateNodeDelay());
@@ -263,6 +291,7 @@ public class Proposer implements ProposerRole {
 
     @Override
     public void handleRejectResponse(Message response) {
+        if (isShutDown) return;
         // determine if REJECT is for PREPARE_REQ or ACCEPT_REQ
         int proposalNumber = response.proposalNumber;
         Proposal proposal = activeProposals.get(proposalNumber);
@@ -278,6 +307,7 @@ public class Proposer implements ProposerRole {
     }
 
     private void sendLearnSingleNode(Message learn, MemberConfig.MemberInfo memberInfo, Proposal proposal, int retries) {
+        if (isShutDown) return;
         learn.send(memberInfo.address, memberInfo.port)
                 .thenAccept(response -> {
                     if (response.type.equals("ACK")) {
@@ -380,6 +410,7 @@ public class Proposer implements ProposerRole {
     public void shutdown() {
         executor.shutdownNow(); // shutdown executor
         scheduler.shutdownNow(); // shutdown scheduler
+        this.isShutDown = true;
         log.info(member.config.memberID + ": Proposer shutdown complete");
     }
 }

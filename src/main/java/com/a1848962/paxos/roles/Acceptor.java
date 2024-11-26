@@ -11,6 +11,8 @@ import java.util.concurrent.atomic.AtomicInteger;
 interface AcceptorRole {
     void handlePrepareRequest(Message message, OutputStream socketOut);
     void handleAcceptRequest(Message message, OutputStream socketOut);
+    void silence();
+    void unsilence();
 }
 
 public class Acceptor implements AcceptorRole {
@@ -26,6 +28,22 @@ public class Acceptor implements AcceptorRole {
 
     public Acceptor(Member member) {
         this.member = member;
+    }
+
+    /**
+     * Silences log output
+     */
+    @Override
+    public void silence() {
+        log.silence();
+    }
+
+    /**
+     * Unsilences log output
+     */
+    @Override
+    public void unsilence() {
+        log.unsilence();
     }
 
     @Override
