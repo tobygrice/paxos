@@ -1,4 +1,3 @@
-// PaxosTestSuite.java
 package com.a1848962.paxos.roles;
 
 import com.a1848962.paxos.network.Message;
@@ -15,7 +14,7 @@ import java.util.concurrent.locks.ReentrantLock;
 import java.util.stream.Collectors;
 
 /**
- * JUnit test suite for Paxos implementation. PLEASE RUN TESTS INDIVIDUALLY
+ * JUnit test suite for Paxos implementation.
  */
 @TestMethodOrder(MethodOrderer.Random.class)
 public class MemberTest {
@@ -27,6 +26,7 @@ public class MemberTest {
 
     @BeforeEach
     void setup() {
+        sequential.lock();
         String[] memberIDs = {"M1", "M2", "M3", "M4", "M5", "M6", "M7", "M8", "M9"};
         members = new HashMap<>();
         memberExecutor = Executors.newCachedThreadPool();
@@ -52,7 +52,6 @@ public class MemberTest {
             }
             members.get("M1").unsilence(); // unsilence logger
         }
-        sequential.lock();
     }
 
     @AfterEach
@@ -252,7 +251,7 @@ public class MemberTest {
         Member M1 = members.get("M1"); // propose using M1
         M1.getProposer().propose();
 
-        Thread.sleep(100); // allow proposal to start
+        Thread.sleep(5); // allow proposal to start
 
         // four members go offline during proposal (majority still available so consensus should be achieved)
         String[] remove = {"M3", "M5", "M7", "M9"};
@@ -287,7 +286,6 @@ public class MemberTest {
         // disable message loss simulation for this test, see reasoning in testFourMembersGoOffline
         // also disabling message delay to ensure as many proposal rounds as possible can be executed
         Message.LOSS_CHANCE = 0;
-        Message.MAX_DELAY = 0;
 
         // members M2/M3 may randomly go to the Sheoak cafe or camping in the Coorong
         for (Member m : members.values()) {
@@ -297,7 +295,7 @@ public class MemberTest {
         Member M1 = members.get("M1"); // propose using M1
         M1.getProposer().propose();
 
-        Thread.sleep(100); // allow proposal to start
+        Thread.sleep(5); // allow proposal to start
 
         // five members go offline during proposal (majority offline so consensus should NOT be achieved)
         String[] remove = {"M2", "M3", "M5", "M7", "M9"};
