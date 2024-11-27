@@ -30,7 +30,8 @@ public class Learner implements LearnerRole {
     }
 
     public String getLearnedValue() {
-        return learnedValue.toString();
+        if (learnedValue.length() > 0) return learnedValue.toString();
+        else return null;
     }
 
     /**

@@ -2,11 +2,10 @@
 package com.a1848962.paxos.roles;
 
 import com.a1848962.paxos.network.Message;
-import com.a1848962.paxos.roles.Member;
 import com.a1848962.paxos.utils.MemberConfig;
-import com.a1848962.paxos.utils.Proposal;
 import com.a1848962.paxos.utils.SimpleLogger;
 import org.junit.jupiter.api.*;
+
 import static org.junit.jupiter.api.Assertions.*;
 
 import java.io.ByteArrayOutputStream;
@@ -15,19 +14,20 @@ import java.util.concurrent.*;
 import java.util.stream.Collectors;
 
 /**
- * JUnit test suite for Paxos implementation.
+ * JUnit test suite for Paxos implementation. PLEASE RUN TESTS INDIVIDUALLY
  */
-@TestInstance(TestInstance.Lifecycle.PER_CLASS)
+@TestInstance(TestInstance.Lifecycle.PER_METHOD) // Use per-method lifecycle
 public class MemberTest {
-    private final Map<String, Member> members = new HashMap<>();
-    private final ExecutorService memberExecutor = Executors.newCachedThreadPool();
-    private final SimpleLogger log = new SimpleLogger("MEMBER-TEST");
+    private Map<String, Member> members;
+    private ExecutorService memberExecutor;
+    private static final SimpleLogger log = new SimpleLogger("MEMBER-TEST");
 
     @BeforeEach
     void setup() {
         String[] memberIDs = {"M1", "M2", "M3", "M4", "M5", "M6", "M7", "M8", "M9"};
+        members = new HashMap<>();
+        memberExecutor = Executors.newCachedThreadPool();
 
-        members.clear();
         for (String memberID : memberIDs) {
             MemberConfig thisConfig = new MemberConfig(memberID);
             Member member = new Member(thisConfig);
@@ -39,28 +39,21 @@ public class MemberTest {
             try {
                 Thread.sleep(100);
             } catch (InterruptedException e) {
-                // handle interruption
+                Thread.currentThread().interrupt();
+                fail("Setup interrupted: " + e.getMessage());
             }
         }
     }
 
     @AfterEach
     void teardownMembers() {
-        // Shutdown all members
+        log.info("Tearing down members");
         for (Member member : members.values()) {
             member.silence();
             member.shutdown();
         }
-        try {
-            Thread.sleep(1000);
-        } catch (InterruptedException e) {
-            throw new RuntimeException(e);
-        }
-    }
-
-    @AfterAll
-    void teardownAll() {
         memberExecutor.shutdownNow();
+        members.clear();
     }
 
     /**
@@ -96,10 +89,10 @@ public class MemberTest {
         // Wait for all proposals to be sent
         assertTrue(latch.await(5, TimeUnit.SECONDS), "Proposers did not send proposals in time");
 
-        // Allow some time for consensus to be reached
-        Thread.sleep(20000);
+        // allow Paxos protocol time to complete
+        Thread.sleep(15000);
 
-        // Verify that a consensus was reached
+        // store all learned values in a set (this line written with AI)
         Set<String> learnedValues = members.values().stream()
                 .filter(m -> m.config.isLearner)
                 .map(m -> m.getLearner().getLearnedValue())
@@ -133,10 +126,10 @@ public class MemberTest {
         // Proposer sends a proposal
         proposer.getProposer().propose("M9");
 
-        // Allow some time for consensus to be reached
+        // allow Paxos protocol time to complete
         Thread.sleep(10000);
 
-        // Verify that a consensus was reached
+        // store all learned values in a set (this line written with AI)
         Set<String> learnedValues = members.values().stream()
                 .filter(m -> m.config.isLearner)
                 .map(m -> m.getLearner().getLearnedValue())
@@ -158,27 +151,29 @@ public class MemberTest {
     @Test
     @DisplayName("Members respond with delays and some proposer goes camping during proposal")
     void testVariableResponsesAndFailures() throws InterruptedException {
-        // Simulate varied response behaviors as per member.properties
+        // note that there is network delay/unreliability simulation in place. See Message.java:
+        //  - random delay on sends from 0-50ms
+        //  - 15% chance of packet loss on sends
 
-        // members M1/M2 may randomly go to the Sheoak cafe or camping in the Coorong
+        // members M2/M3 may randomly go to the Sheoak cafe or camping in the Coorong
         for (Member m : members.values()) {
             m.startSheoakCoorongSimulation();
         }
 
-        Member proposer1 = members.get("M2"); // propose using M2 and M3
-        Member proposer2 = members.get("M3");
-        proposer2.getProposer().propose("M9"); // M3 proposes M9
-        Thread.sleep(100);
-        proposer2.forceCoorong(true, 5000); // then goes camping (unavailable) for 5 seconds
-        proposer1.getProposer().propose("M8"); // M2 proposes M8
+        Member M2 = members.get("M2"); // propose using M2 and M3
+        Member M3 = members.get("M3");
+        M3.getProposer().propose(); // M3 proposes self
+        Thread.sleep(500);
+        M3.forceCoorong(true, 5000); // then goes camping (unavailable) for 5 seconds
+        M2.getProposer().propose(); // M2 proposes self
 
-        // M2 should handle proposal. If M3 had enough time to send ACCEPT_REQ, then M2 should propose M9.
-        // Otherwise, M2 should propose its preferred value of M8.
+        // If M3 had enough time to send ACCEPT_REQ, then M2 should propose M3.
+        // Otherwise, M2 should propose itself.
 
-        // Allow some time for consensus to be reached
-        Thread.sleep(15000);
+        // allow Paxos protocol time to complete
+        Thread.sleep(10000);
 
-        // Verify that a consensus was reached
+        // store all learned values in a set (this line written with AI)
         Set<String> learnedValues = members.values().stream()
                 .filter(m -> m.config.isLearner)
                 .map(m -> m.getLearner().getLearnedValue())
@@ -189,6 +184,130 @@ public class MemberTest {
         }
         assertEquals(1, learnedValues.size(), "Multiple consensus values detected");
     }
-}
 
-// write similar test with proposer shutdown instead of visiting coorong
+    /*--------------------- Additional Testing: stress/edge testing ---------------------*/
+
+    /**
+     * Additional Testing 1: Very poor network reliability
+     */
+    @Test
+    @DisplayName("Consensus is reached even with severe packet loss and network delays")
+    void testPoorNetwork() throws InterruptedException {
+        // message sending can be delayed up to 500ms and has a loss chance of 40%
+        Message.MAX_DELAY = 500;
+        Message.LOSS_CHANCE = 0.4;
+
+        // members M2/M3 may randomly go to the Sheoak cafe or camping in the Coorong
+        for (Member m : members.values()) {
+            m.startSheoakCoorongSimulation();
+        }
+
+        Member M3 = members.get("M3"); // propose using M3 (may go to the coorong at any time)
+        M3.getProposer().propose();
+
+        Thread.sleep(20000); // sleep for a long time to allow for many rounds
+
+        // store all learned values in a set (this line written with AI)
+        Set<String> learnedValues = members.values().stream()
+                .filter(m -> m.config.isLearner)
+                .map(m -> m.getLearner().getLearnedValue())
+                .filter(Objects::nonNull)
+                .collect(Collectors.toSet());
+
+        // check consensus
+        for (String learnedValue : learnedValues) {
+            log.info("Learned Value: " + learnedValue);
+        }
+        assertEquals(1, learnedValues.size(), "Multiple consensus values detected");
+        if (learnedValues.size() == 1) {
+            String learnedValue = learnedValues.iterator().next();
+            assertEquals("M3", learnedValue, "Consensus value does not match expected proposal");
+        }
+    }
+
+    @Test
+    @DisplayName("Consensus is reached when four members go offline during proposal")
+    void testFourMembersGoOffline() throws InterruptedException {
+        // disable message loss simulation for this test, as a single lost message will cause proposal round to be
+        // rejected. Paxos would still eventually reach consensus, but the test may need to run for quite some time.
+        // Easier just to disable packet loss for this test.
+        Message.LOSS_CHANCE = 0;
+
+        // members M2/M3 may randomly go to the Sheoak cafe or camping in the Coorong
+        for (Member m : members.values()) {
+            m.startSheoakCoorongSimulation();
+        }
+
+        Member M1 = members.get("M1"); // propose using M1
+        M1.getProposer().propose();
+
+        Thread.sleep(100); // allow proposal to start
+
+        // four members go offline during proposal (majority still available so consensus should be achieved)
+        String[] remove = new String[]{"M3", "M5", "M7", "M9"};
+        for (String m : remove) {
+            members.get(m).shutdown();
+        }
+
+        // allow Paxos protocol time to complete
+        Thread.sleep(8000);
+
+        // store all learned values in a set (this line written with AI)
+        Set<String> learnedValues = members.values().stream()
+                .filter(m -> m.config.isLearner)
+                .map(m -> m.getLearner().getLearnedValue())
+                .filter(Objects::nonNull)
+                .collect(Collectors.toSet());
+
+        // check consensus
+        for (String learnedValue : learnedValues) {
+            log.info("Learned Value: " + learnedValue);
+        }
+        assertEquals(1, learnedValues.size(), "Multiple consensus values detected");
+        if (learnedValues.size() == 1) {
+            String learnedValue = learnedValues.iterator().next();
+            assertEquals("M1", learnedValue, "Consensus value does not match expected proposal");
+        }
+    }
+
+    @Test
+    @DisplayName("Consensus is NOT reached when five members go offline during proposal")
+    void testFiveMembersGoOffline() throws InterruptedException {
+        // disable message loss simulation for this test, see reasoning in testFourMembersGoOffline
+        // also disabling message delay to ensure as many proposal rounds as possible can be executed
+        Message.LOSS_CHANCE = 0;
+        Message.MAX_DELAY = 0;
+
+        // members M2/M3 may randomly go to the Sheoak cafe or camping in the Coorong
+        for (Member m : members.values()) {
+            m.startSheoakCoorongSimulation();
+        }
+
+        Member M1 = members.get("M1"); // propose using M1
+        M1.getProposer().propose();
+
+        Thread.sleep(100); // allow proposal to start
+
+        // five members go offline during proposal (majority offline so consensus should NOT be achieved)
+        String[] remove = new String[]{"M2", "M3", "M5", "M7", "M9"};
+        for (String m : remove) {
+            members.get(m).shutdown();
+        }
+
+        // allow sufficient time to prove a consensus cannot be reached
+        Thread.sleep(20000);
+
+        // store all learned values in a set (this line written with AI)
+        Set<String> learnedValues = members.values().stream()
+                .filter(m -> m.config.isLearner)
+                .map(m -> m.getLearner().getLearnedValue())
+                .filter(Objects::nonNull)
+                .collect(Collectors.toSet());
+
+        // check consensus
+        for (String learnedValue : learnedValues) {
+            log.info("Learned Value: " + learnedValue);
+        }
+        assertEquals(0, learnedValues.size(), "Consensus value/s detected");
+    }
+}
