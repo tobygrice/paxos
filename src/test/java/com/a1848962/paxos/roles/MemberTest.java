@@ -8,19 +8,22 @@ import org.junit.jupiter.api.*;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-import java.io.ByteArrayOutputStream;
 import java.util.*;
 import java.util.concurrent.*;
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReentrantLock;
 import java.util.stream.Collectors;
 
 /**
  * JUnit test suite for Paxos implementation. PLEASE RUN TESTS INDIVIDUALLY
  */
-@TestInstance(TestInstance.Lifecycle.PER_METHOD) // Use per-method lifecycle
+@TestMethodOrder(MethodOrderer.Random.class)
 public class MemberTest {
     private Map<String, Member> members;
     private ExecutorService memberExecutor;
     private static final SimpleLogger log = new SimpleLogger("MEMBER-TEST");
+
+    private final Lock sequential = new ReentrantLock();
 
     @BeforeEach
     void setup() {
@@ -28,9 +31,14 @@ public class MemberTest {
         members = new HashMap<>();
         memberExecutor = Executors.newCachedThreadPool();
 
+        // reset static variables
+        Message.MAX_DELAY = 50;
+        Message.LOSS_CHANCE = 0.15;
+
         for (String memberID : memberIDs) {
             MemberConfig thisConfig = new MemberConfig(memberID);
             Member member = new Member(thisConfig);
+
             members.put(memberID, member);
             memberExecutor.submit(() -> {
                 member.start(); // Do not start stdin listener during tests
@@ -42,7 +50,9 @@ public class MemberTest {
                 Thread.currentThread().interrupt();
                 fail("Setup interrupted: " + e.getMessage());
             }
+            members.get("M1").unsilence(); // unsilence logger
         }
+        sequential.lock();
     }
 
     @AfterEach
@@ -54,6 +64,7 @@ public class MemberTest {
         }
         memberExecutor.shutdownNow();
         members.clear();
+        sequential.unlock();
     }
 
     /**
@@ -244,7 +255,7 @@ public class MemberTest {
         Thread.sleep(100); // allow proposal to start
 
         // four members go offline during proposal (majority still available so consensus should be achieved)
-        String[] remove = new String[]{"M3", "M5", "M7", "M9"};
+        String[] remove = {"M3", "M5", "M7", "M9"};
         for (String m : remove) {
             members.get(m).shutdown();
         }
@@ -289,7 +300,7 @@ public class MemberTest {
         Thread.sleep(100); // allow proposal to start
 
         // five members go offline during proposal (majority offline so consensus should NOT be achieved)
-        String[] remove = new String[]{"M2", "M3", "M5", "M7", "M9"};
+        String[] remove = {"M2", "M3", "M5", "M7", "M9"};
         for (String m : remove) {
             members.get(m).shutdown();
         }
