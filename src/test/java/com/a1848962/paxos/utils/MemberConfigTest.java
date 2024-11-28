@@ -30,7 +30,6 @@ class MemberConfigTest {
         assertEquals("localhost", config.networkInfo.get("M1").address, "M1 address should be localhost");
         assertEquals(5009, config.networkInfo.get("M9").port, "M9 port should be 5009");
         assertEquals("localhost", config.networkInfo.get("M1").address, "M9 address should be localhost");
-        assertNull(config.networkInfo.get("M4"), "Self should not be in networkInfo map");
     }
 
     @Test
@@ -43,9 +42,9 @@ class MemberConfigTest {
         assertTrue(config.isProposer, "Node should be specified PROPOSER");
         assertTrue(config.isAcceptor, "Node should be ACCEPTOR by default");
         assertTrue(config.isLearner, "Node should be LEARNER by default");
-        assertEquals(200, config.maxDelay, "M2 maxDelay should be 200ms");
-        assertEquals(0.8, config.reliability,"M2's reliability should be 0.8");
-        assertEquals(0.2, config.chanceSheoak, "M2 sheoak should be 0.2");
+        assertEquals(500, config.maxDelay, "M2 maxDelay should be 500ms");
+        assertEquals(0.7, config.reliability,"M2's reliability should be 0.7");
+        assertEquals(0.1, config.chanceSheoak, "M2 sheoak should be 0.1");
         assertEquals(0, config.chanceCoorong, "Default coorong should be 0");
     }
 

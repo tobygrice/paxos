@@ -3,18 +3,43 @@ package com.a1848962.paxos.roles;
 import com.a1848962.paxos.network.*;
 import com.a1848962.paxos.utils.*;
 
-import java.io.IOException;
 import java.io.OutputStream;
-import java.util.Properties;
 import java.util.Random;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 
-/* class to simulate a member in the networkInfo. */
+/**
+ * Represents a member in the Paxos network. Can assume any combination of proposer, acceptor, and learner roles.
+ */
 public class Member implements Network.PaxosHandler {
+    public interface LearnerRole {
+        String getLearnedValue();
+        void handleLearn(Message message, OutputStream socketOut);
+        void silence();
+        void unsilence();
+    }
+
+    public interface AcceptorRole {
+        void handlePrepareRequest(Message message, OutputStream socketOut);
+        void handleAcceptRequest(Message message, OutputStream socketOut);
+        void silence();
+        void unsilence();
+    }
+
+    public interface ProposerRole {
+        void handlePrepareReqResponse(Message response);
+        void handleAcceptReqResponse(Message response);
+        void handleRejectResponse(Message response);
+        void propose();
+        void propose(String target);
+        void silence();
+        void unsilence();
+        void shutdown();
+    }
+
     // configuration variables
-    protected MemberConfig config;
+    public MemberConfig config;
 
     // delay simulation variables
     //      while network delay simulation is in place, be careful not to set RETRY_DELAY below MAX_DELAY of Network class
@@ -46,7 +71,7 @@ public class Member implements Network.PaxosHandler {
     }
 
     /**
-     * Silences log output for Member, network, and all role objects
+     * Mutes log output for Member, network, and all role objects
      */
     public void silence() {
         if (this.proposer != null) proposer.silence();
@@ -56,6 +81,9 @@ public class Member implements Network.PaxosHandler {
         log.silence();
     }
 
+    /**
+     * Unmutes log output for Member, network, and all role objects
+     */
     public void unsilence() {
         if (this.proposer != null) proposer.unsilence();
         if (this.acceptor != null) acceptor.unsilence();
@@ -74,7 +102,7 @@ public class Member implements Network.PaxosHandler {
     }
 
     /**
-     * Default start function for Member. Instantiates role objects as required and starts network to listen for
+     * Start function for Member. Instantiates role objects as required and starts network to listen for
      * messages.
      *
      * @param proposerAcceptsStdin      proposer nodes should accept `propose` commands from stdin
@@ -90,10 +118,14 @@ public class Member implements Network.PaxosHandler {
         if (simulateSheoakCoorong) startSheoakCoorongSimulation();
     }
 
+    /**
+     * Starts sheoak/coorong simulation. Schedules simulateSheoakCoorong() to be executed every SIMULATION_FREQUENCY ms
+     */
     public void startSheoakCoorongSimulation() {
         log.info(config.memberID + ": Starting Sheoak cafe / Coorong simulation");
         simulationScheduler.scheduleAtFixedRate(this::simulateSheoakCoorong, 0, SIMULATION_FREQUENCY, TimeUnit.MILLISECONDS);
     }
+
     public void stopSheoakCoorongSimulation() {
         log.info(config.memberID + ": Stopping Sheoak cafe / Coorong simulation");
         simulationScheduler.shutdownNow();
@@ -102,9 +134,11 @@ public class Member implements Network.PaxosHandler {
     public LearnerRole getLearner() {
         return learner;
     }
+
     public AcceptorRole getAcceptor() {
         return acceptor;
     }
+
     public ProposerRole getProposer() {
         return proposer;
     }
@@ -117,6 +151,13 @@ public class Member implements Network.PaxosHandler {
         log.info(config.memberID + ": Shutdown complete");
     }
 
+    /**
+     * Implements PaxosHandler interface. All messages to network object's ServerSocket are unmarshalled and passed
+     * to this function.
+     * @param message       the message object that has been received
+     * @param socketOut     the socket out for response
+     */
+    @Override
     public void handleIncomingMessage(Message message, OutputStream socketOut) {
         switch (message.type) {
             // most of the time PROMISE/ACCEPT/REJECT messages will be sent as a response to an open socket, and so they
@@ -147,9 +188,14 @@ public class Member implements Network.PaxosHandler {
         }
     }
 
+    /**
+     * Forces the member to go camping in the Coorong. While in the Coorong, no messages will be received by the member.
+     *
+     * @param value     the value currentlyCoorong should be set to
+     * @param time      how long the member should stay camping in the Coorong (only accessed when `value` is true)
+     */
     synchronized public void forceCoorong(boolean value, long time) {
         if (value) {
-            // Member has gone camping in the Coorong, now unreachable
             log.info(config.memberID + " is camping in the Coorong. They are unreachable");
 
             currentlyCoorong = true;
@@ -164,15 +210,20 @@ public class Member implements Network.PaxosHandler {
         }
     }
 
+    /**
+     * Forces the member to work at Sheoak cafe. While at Sheoak cafe, member always responds and without delay.
+     *
+     * @param value     the value currentlySheoak should be set to
+     * @param time      how long the member should stay at Sheoak cafe (only accessed when `value` is true)
+     */
     synchronized public void forceSheoak(Boolean value, long time) {
         if (value) {
-            // Member has gone to Sheoak cafe, responses now instant
             log.info(config.memberID + " is at Sheoak cafe. Responses are now instant");
 
             currentlySheoak = true;
             sheoakStartTime = System.currentTimeMillis();
 
-            // Schedule to exit Sheoak Café after `time` milliseconds
+            // exit Sheoak after `time` milliseconds
             scheduler.schedule(() -> forceSheoak(false, 0), time, TimeUnit.MILLISECONDS);
         } else {
             currentlySheoak = false;
@@ -183,12 +234,12 @@ public class Member implements Network.PaxosHandler {
 
 
     /**
-     * Method to simulate chance of a state change to Sheoak or Coorong. Called every SIMULATION_FREQUENCY ms
-     *     This function was written with the assistance of AI
+     * Simulates chance of a state change to Sheoak or Coorong. If sheoak/coorong simulation is active,
+     * this is called every SIMULATION_FREQUENCY ms
      */
     private void simulateSheoakCoorong() {
         // simulate chance for member to go camping in the Coorong
-        if (!currentlyCoorong && !currentlySheoak && random.nextDouble() < (config.chanceCoorong)) {
+        if (!currentlyCoorong && !currentlySheoak && random.nextDouble() < config.chanceCoorong) {
             forceCoorong(true, TIME_IN_COORONG);
         }
 
@@ -199,33 +250,42 @@ public class Member implements Network.PaxosHandler {
     }
 
     /**
-     * Method to simulate delay (or lack thereof) for a proposer node according to Sheoak or Coorong status
+     * Simulates delay (or lack thereof) for member according to Sheoak or Coorong status
+     *
+     * @return      the time in milliseconds to sleep
      */
     protected long simulateNodeDelay() {
-        long currentTime = System.currentTimeMillis();
+        long delay; // calculate delay based on current state
+        if (currentlySheoak) delay = 0; // instant response
+        else delay = (long) (random.nextDouble() * config.maxDelay); // normal operation: random delay up to maxDelay
 
-        // calculate delay based on current state:
-        long delay;
-        if (currentlySheoak) {
-            // instant response
-            delay = 0;
-        } else if (currentlyCoorong) {
-            // delay until TIME_IN_COORONG has passed (since entering)
-            long elapsed = currentTime - coorongStartTime;
-            delay = TIME_IN_COORONG - elapsed;
-            log.info(config.memberID + ": Currently Coorong, not responding for another " + delay + " ms");
-        } else {
-            // normal operation: random delay up to maxDelay
-            delay = (long) (random.nextDouble() * config.maxDelay);
-        }
+        if (delay < 0) delay = 0;
 
-        if (delay > 0) {
-            return delay;
-        } else {
-            return 0;
-        }
+        return delay;
     }
 
+    /**
+     * Simulates reliability of member according to value in config. If member is currentlyCoorong,
+     * loss chance is overridden to 100%. If member is currentlySheoak, loss chance is overridden 0%.
+     *
+     * @return      true if the member should ignore a message, else false
+     */
+    protected boolean simulateNodeReliability() {
+        double reliability = config.reliability;
+        if (currentlyCoorong) {
+            reliability = 0.0;
+        } else if (currentlySheoak) {
+            reliability = 1.0;
+        }
+        double lossChance = 1.0 - reliability;
+        return (random.nextDouble() < lossChance);
+    }
+
+    /**
+     * Takes memberID as a command line argument and starts member. Will automatically enable proposerAcceptsStdin.
+     *
+     * @param args  a single argument containing memberID in format M1, M2, etc
+     */
     public static void main(String[] args) {
         if (args.length != 1) {
             throw new IllegalArgumentException("Expected single argument containing memberID in format M1, M2, etc");

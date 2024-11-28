@@ -6,25 +6,22 @@ import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.net.Socket;
 import java.net.ServerSocket;
-import java.util.Random;
 import java.util.concurrent.*;
-import java.util.concurrent.atomic.AtomicInteger;
 
 import com.a1848962.paxos.utils.SimpleLogger;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
-/* Network infrastructure for communication across nodes */
-// This infrastructure class was written with the assistance of AI
+/**
+ *  Network infrastructure class to listen for incoming messages, unmarshall them and pass them to the parent member
+ */
 public class Network {
-
-    private static final SimpleLogger log = new SimpleLogger("NETWORK");
-    private final ExecutorService executor = Executors.newCachedThreadPool();
 
     private ServerSocket serverSocket;
     private final int listenPort;
 
     private final PaxosHandler handler;
+
+    private static final SimpleLogger log = new SimpleLogger("NETWORK");
+    private final ExecutorService executor = Executors.newCachedThreadPool();
 
     /**
      * Silences log output
@@ -47,18 +44,14 @@ public class Network {
         void handleIncomingMessage(Message message, OutputStream socketOut);
     }
 
-    /**
-     * Constructor to initialize the Network with a listening port and a message handler.
-     *
-     * @param listenPort The port on which to listen for incoming messages.
-     * @param handler    The handler to process incoming messages.
-     */
     public Network(int listenPort, PaxosHandler handler) {
         this.listenPort = listenPort;
         this.handler = handler;
     }
 
-    // method to establish a ServerSocket listening on listenPort
+    /**
+     * Establish a ServerSocket listening on listenPort
+     */
     public void start() {
         // use executor service to handle incoming connections
         executor.submit(() -> {
@@ -81,9 +74,9 @@ public class Network {
     }
 
     /**
-     * Unmarshalls incoming message and passes to handleIncomingMessage method of handler
+     * Unmarshall incoming messages and pass them to handleIncomingMessage
      *
-     * @param socket    The socket connected to the client.
+     * @param socket    client socket
      */
     private void connectionHandler(Socket socket) {
         try {
@@ -101,7 +94,7 @@ public class Network {
     }
 
     /**
-     * Shuts down the executor service gracefully.
+     * Shuts down ServerSocket listener. This function was written with the assistance of AI.
      */
     public void shutdown() {
         if (serverSocket != null && !serverSocket.isClosed()) {

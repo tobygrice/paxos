@@ -1,0 +1,32 @@
+compile:
+	mvnw.cmd clean compile
+
+test:
+	mvnw.cmd test
+
+M1:
+	mvnw.cmd exec:java -Dexec.mainClass=com.a1848962.paxos.roles.Member -Dexec.args="M1"
+
+M2:
+	mvnw.cmd exec:java -Dexec.mainClass=com.a1848962.paxos.roles.Member -Dexec.args="M2"
+
+M3:
+	mvnw.cmd exec:java -Dexec.mainClass=com.a1848962.paxos.roles.Member -Dexec.args="M3"
+
+M4:
+	mvnw.cmd exec:java -Dexec.mainClass=com.a1848962.paxos.roles.Member -Dexec.args="M4"
+
+M5:
+	mvnw.cmd exec:java -Dexec.mainClass=com.a1848962.paxos.roles.Member -Dexec.args="M5"
+
+M6:
+	mvnw.cmd exec:java -Dexec.mainClass=com.a1848962.paxos.roles.Member -Dexec.args="M6"
+
+M7:
+	mvnw.cmd exec:java -Dexec.mainClass=com.a1848962.paxos.roles.Member -Dexec.args="M7"
+
+M8:
+	mvnw.cmd exec:java -Dexec.mainClass=com.a1848962.paxos.roles.Member -Dexec.args="M8"
+
+M9:
+	mvnw.cmd exec:java -Dexec.mainClass=com.a1848962.paxos.roles.Member -Dexec.args="M9"

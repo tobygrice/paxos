@@ -1,13 +1,14 @@
 package com.a1848962.paxos.utils;
 
-import com.a1848962.paxos.network.Network;
-
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.Properties;
 import java.util.HashMap;
 
-/* class to store member configuration values parsed from member.properties */
+/**
+ * Class to store member configuration values parsed from member.properties. Also stores a map containing information
+ * of all other members in the network. Written with the assistance of AI.
+ */
 public class MemberConfig {
     public volatile String memberID;
     public final String address;
@@ -23,6 +24,9 @@ public class MemberConfig {
     // map to hold connection info of all members: key = memberID, value = MemberInfo
     public HashMap<String, MemberInfo> networkInfo;
 
+    /**
+     * Class to hold critical information (id, roles, address, and port) for other members in the network.
+     */
     public static class MemberInfo {
         public final String id;
         public final boolean isLearner;
@@ -41,6 +45,11 @@ public class MemberConfig {
         }
     }
 
+    /**
+     * Parse properties from member.properties file into Java Properties object. This function written with the
+     * assistance of AI.
+     * @return      a Properties object parsed from member.properties
+     */
     public static Properties getProperties() {
         Properties properties = new Properties();
         try (InputStream input = MemberConfig.class.getClassLoader().getResourceAsStream("member.properties")) {
@@ -48,22 +57,9 @@ public class MemberConfig {
                 throw new RuntimeException("member.properties not found in classpath.");
             }
             properties.load(input);
-        } catch (IOException e) {
-            throw new RuntimeException("Failed to load member.properties.", e);
+        } catch (IOException ex) {
+            throw new RuntimeException("Failed to load member.properties.", ex);
         }
-        return properties;
-    }
-
-    // method to construct config object by parsing member.properties
-    // this method partially written with the assistance of AI
-    public MemberConfig(String memberID) {
-        // confirm memberID follows expected format
-        if (!memberID.matches("M\\d+")) {
-            throw new IllegalArgumentException("Invalid memberID format. Expected format: positive integer preceded by 'M' (e.g., M1, M2).");
-        }
-
-        Properties properties = getProperties();
-
         // check all default properties are provided
         String[] defaultKeys = {
                 "address.default",
@@ -79,32 +75,49 @@ public class MemberConfig {
                 throw new RuntimeException("Missing default value for " + key);
             }
         }
+        return properties;
+    }
 
-        // Load members list
+    // method to construct config object by parsing member.properties
+    // this method partially written with the assistance of AI
+
+    /**
+     * Constructor method to create parse all properties of the provided memberID from member.properties. Written with
+     * the assistance of AI.
+     * @param memberID  the ID of the member being parsed from member.properties
+     */
+    public MemberConfig(String memberID) {
+        // confirm memberID follows expected format
+        if (!memberID.matches("M\\d+")) {
+            throw new IllegalArgumentException("Invalid memberID format. Expected format: positive integer preceded by 'M' (e.g., M1, M2).");
+        }
+
+        Properties properties = getProperties();
+
+        // load members list
         String membersStr = properties.getProperty("members");
         if (membersStr == null || membersStr.trim().isEmpty()) {
             throw new RuntimeException("'members' property is missing or empty.");
         }
 
+        // build networkInfo hashmap containing MemberInfo objects for each member in the network
         this.networkInfo = new HashMap<>();
         String[] members = membersStr.split(",");
         for (String m : members) {
             String thisMember = m.trim();
-            // if (!thisMember.equalsIgnoreCase(memberID)) {
-                boolean tempLearner = false, tempAcceptor = false, tempProposer = false;
-                if (Boolean.parseBoolean(properties.getProperty(thisMember + ".proposer", properties.getProperty("proposer.default")))) {
-                    tempProposer = true;
-                }
-                if (Boolean.parseBoolean(properties.getProperty(thisMember + ".acceptor", properties.getProperty("acceptor.default")))) {
-                    tempAcceptor = true;
-                }
-                if (Boolean.parseBoolean(properties.getProperty(thisMember + ".learner", properties.getProperty("learner.default")))) {
-                    tempLearner = true;
-                }
-                String tempAddress = properties.getProperty(thisMember + ".address", properties.getProperty("address.default"));
-                int tempPort = Integer.parseInt(thisMember.substring(1)) + Integer.parseInt(properties.getProperty(thisMember + ".base_port", properties.getProperty("base_port.default")));
-                this.networkInfo.put(thisMember, new MemberInfo(thisMember, tempLearner, tempAcceptor, tempProposer, tempAddress, tempPort));
-            // }
+            boolean tempLearner = false, tempAcceptor = false, tempProposer = false;
+            if (Boolean.parseBoolean(properties.getProperty(thisMember + ".proposer", properties.getProperty("proposer.default")))) {
+                tempProposer = true;
+            }
+            if (Boolean.parseBoolean(properties.getProperty(thisMember + ".acceptor", properties.getProperty("acceptor.default")))) {
+                tempAcceptor = true;
+            }
+            if (Boolean.parseBoolean(properties.getProperty(thisMember + ".learner", properties.getProperty("learner.default")))) {
+                tempLearner = true;
+            }
+            String tempAddress = properties.getProperty(thisMember + ".address", properties.getProperty("address.default"));
+            int tempPort = Integer.parseInt(thisMember.substring(1)) + Integer.parseInt(properties.getProperty(thisMember + ".base_port", properties.getProperty("base_port.default")));
+            this.networkInfo.put(thisMember, new MemberInfo(thisMember, tempLearner, tempAcceptor, tempProposer, tempAddress, tempPort));
         }
 
         // parse properties

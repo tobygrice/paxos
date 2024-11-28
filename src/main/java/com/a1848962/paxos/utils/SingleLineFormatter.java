@@ -7,12 +7,12 @@ import java.util.logging.Formatter;
 import java.util.logging.LogRecord;
 
 /**
- * Custom formatter to output log records in a single line.
+ * Custom formatter to output log records in a single line to improve readability.
  * Written with the assistance of AI.
  */
 public class SingleLineFormatter extends Formatter {
 
-    private static final DateTimeFormatter TIME_FORMATTER = DateTimeFormatter.ofPattern("HH:mm:ss")
+    private static final DateTimeFormatter TIME_FORMATTER = DateTimeFormatter.ofPattern("HH:mm:ss.SSS")
             .withZone(ZoneId.systemDefault());
 
     @Override

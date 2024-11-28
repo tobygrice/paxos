@@ -13,6 +13,10 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
+/**
+ * Message class to represent a message between members. Allows message sending using message.send(address, port).
+ * Some parts of this class were written with the assistance of AI, as specified.
+ */
 public class Message {
     // do not serialise:
     private static final Gson gson = new Gson();
@@ -31,13 +35,16 @@ public class Message {
     public String acceptedValue = null;
 
     /**
-     * Simulates network delay and packet loss.
+     * Simulate network delay and packet loss according to MAX_DELAY / LOSS_CHANCE values
      *
-     * @return True if the message was lost, else False
+     * @return  true if the message was lost, else false
      */
     private boolean simulateDelayLoss() {
         // simulate networkInfo delay up to maxDelay length
-        int delay = random.nextInt(MAX_DELAY);
+        int delay;
+        if (MAX_DELAY > 0) delay = random.nextInt(MAX_DELAY);
+        else delay = 0;
+
         try {
             Thread.sleep(delay);
         } catch (InterruptedException ex) {
@@ -49,12 +56,28 @@ public class Message {
     }
 
     /**
-     * Sends a message asynchronously to the specified address and port.
-     * Returns a CompletableFuture that completes with the response or exceptionally on failure.
+     * Converts object to JSON object using gson
+     * @return     a serialisable JSON string
+     */
+    public String marshall() {
+        return gson.toJson(this) + "\n";
+    }
+
+    /**
+     * Converts JSON object back to Message object
+     * @return     a message object from JSON string
+     */
+    public static Message unmarshall(String json) {
+        return gson.fromJson(json, Message.class);
+    }
+
+    /**
+     * Send this message object to the specified address/port. Returns a CompletableFuture that completes with the
+     * response or exceptionally on failure. This function written with the assistance of AI.
      *
-     * @param address The target address.
-     * @param port The target port.
-     * @return CompletableFuture<String> with the response.
+     * @param address   address of recipient
+     * @param port      port of recipient
+     * @return          CompletableFuture<String> containing response
      */
     public CompletableFuture<Message> send(String address, int port) {
         return CompletableFuture.supplyAsync(() -> {
@@ -86,11 +109,11 @@ public class Message {
     }
 
     /**
-     * Creates a PREPARE_REQ message.
+     * Creates a PREPARE_REQ message
      *
-     * @param proposalCounter   The proposal number.
-     * @param memberID          The ID of the member sending the message.
-     * @return A PREPARE_REQ type Message.
+     * @param proposalCounter   proposal number
+     * @param memberID          member ID of sender
+     * @return                  PREPARE_REQ type message
      */
     public static Message prepareRequest(int proposalCounter, String memberID) {
         Message message = new Message();
@@ -103,11 +126,11 @@ public class Message {
     /**
      * Creates a PROMISE message containing information regarding a previously accepted proposal
      *
-     * @param proposalCounter               The proposal number being promised.
-     * @param memberID                      The ID of the member sending the message.
-     * @param highestPromisedProposal       The highest proposal number already promised.
-     * @param acceptedValue                 The value of the highest proposal accepted.
-     * @return A PROMISE type Message.
+     * @param proposalCounter               proposal number
+     * @param memberID                      member ID of sender
+     * @param highestPromisedProposal       highest proposal number already promised or accepted
+     * @param acceptedValue                 associated value of highest accepted proposal
+     * @return                              PROMISE type message
      */
     public static Message promise(int proposalCounter, String memberID, int highestPromisedProposal, String acceptedValue) {
         Message message = promise(proposalCounter, memberID);
@@ -117,11 +140,11 @@ public class Message {
     }
 
     /**
-     * Creates a PROMISE message.
+     * Creates a PROMISE message
      *
-     * @param proposalCounter   The proposal number being promised.
-     * @param memberID          The ID of the member sending the message.
-     * @return A PROMISE type Message.
+     * @param proposalCounter               proposal number
+     * @param memberID                      member ID of sender
+     * @return                              PROMISE type message
      */
     public static Message promise(int proposalCounter, String memberID) {
         Message message = new Message();
@@ -132,12 +155,12 @@ public class Message {
     }
 
     /**
-     * Creates an ACCEPT_REQ message.
+     * Creates an ACCEPT_REQ message
      *
-     * @param proposalCounter   The proposal number.
-     * @param memberID          The ID of the member sending the message.
-     * @param value             The value to accept.
-     * @return An ACCEPT_REQ type Message.
+     * @param proposalCounter               proposal number
+     * @param memberID                      member ID of sender
+     * @param value                         value to be accepted
+     * @return                              ACCEPT_REQ type message
      */
     public static Message acceptRequest(int proposalCounter, String memberID, String value) {
         Message message = new Message();
@@ -149,12 +172,12 @@ public class Message {
     }
 
     /**
-     * Creates an ACCEPT message.
+     * Creates an ACCEPT message
      *
-     * @param proposalCounter   The proposal number that was accepted.
-     * @param memberID          The ID of the member sending the message.
-     * @param value             The value that was accepted.
-     * @return An ACCEPT type Message.
+     * @param proposalCounter               proposal number
+     * @param memberID                      member ID of sender
+     * @param value                         value being accepted
+     * @return                              ACCEPT type message
      */
     public static Message accept(int proposalCounter, String memberID, String value) {
         Message message = new Message();
@@ -166,13 +189,13 @@ public class Message {
     }
 
     /**
-     * Creates a REJECT message - used for rejecting a request when acceptor has already accepted a higher proposalID.
+     * Creates a REJECT message - used for rejecting a request when acceptor has already accepted a higher proposalID
      *
-     * @param proposalCounter               The proposal number that was rejected.
-     * @param memberID                      The ID of the member sending the message.
-     * @param highestPromisedProposal       The highest proposal number already promised.
-     * @param acceptedValue                 The value of the highest proposal accepted.
-     * @return A REJECTED type Message.
+     * @param proposalCounter               proposal number
+     * @param memberID                      member ID of sender
+     * @param highestPromisedProposal       highest proposal number already promised or accepted
+     * @param acceptedValue                 associated value of highest accepted proposal
+     * @return                              REJECT type message
      */
     public static Message reject(int proposalCounter, String memberID, int highestPromisedProposal, String acceptedValue) {
         Message message = reject(proposalCounter, memberID, highestPromisedProposal);
@@ -182,12 +205,12 @@ public class Message {
 
     /**
      * Creates a REJECT message - used for rejecting a request when acceptor has already promised a higher
-     * proposalID, and acceptor not accepted any values.
+     * proposalID but not accepted any values
      *
-     * @param proposalCounter               The proposal number that was rejected.
-     * @param memberID                      The ID of the member sending the message.
-     * @param highestPromisedProposal       The highest proposal number already promised.
-     * @return A REJECTED type Message.
+     * @param proposalCounter               proposal number
+     * @param memberID                      member ID of sender
+     * @param highestPromisedProposal       highest proposal number already promised or accepted
+     * @return                              REJECT type message
      */
     public static Message reject(int proposalCounter, String memberID, int highestPromisedProposal) {
         Message message = new Message();
@@ -199,12 +222,12 @@ public class Message {
     }
 
     /**
-     * Creates a LEARN message.
+     * Creates a LEARN message
      *
-     * @param proposalCounter   The proposal number that was learned.
-     * @param memberID          The ID of the member sending the message.
-     * @param value             The value that was learned.
-     * @return A LEARN type Message.
+     * @param proposalCounter               proposal number
+     * @param memberID                      member ID of sender
+     * @param value                         value to be learned
+     * @return                              LEARN type message
      */
     public static Message learn(int proposalCounter, String memberID, String value) {
         Message message = new Message();
@@ -216,10 +239,10 @@ public class Message {
     }
 
     /**
-     * Creates an ACK message.
+     * Creates an ACK message
      *
-     * @param memberID The ID of the member sending the acknowledgment.
-     * @return An ACK type Message.
+     * @param memberID                      member ID of sender
+     * @return                              ACK type message
      */
     public static Message ack(String memberID) {
         Message message = new Message();
@@ -231,21 +254,13 @@ public class Message {
     /**
      * Creates an NACK message.
      *
-     * @param memberID The ID of the member sending the acknowledgment.
-     * @return An ACK type Message.
+     * @param memberID                      member ID of sender
+     * @return                              NACK type message
      */
     public static Message nack(String memberID) {
         Message message = new Message();
         message.type = "NACK";
         message.senderID = memberID;
         return message;
-    }
-
-    public String marshall() {
-        return gson.toJson(this) + "\n";
-    }
-
-    public static Message unmarshall(String json) {
-        return gson.fromJson(json, Message.class);
     }
 }

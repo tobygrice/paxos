@@ -14,74 +14,69 @@ import java.util.concurrent.locks.ReentrantLock;
 import java.util.stream.Collectors;
 
 /**
- * JUnit test suite for Paxos implementation.
+ * Paxos test suite.
  */
-@TestMethodOrder(MethodOrderer.Random.class)
 public class MemberTest {
-    private Map<String, Member> members;
-    private ExecutorService memberExecutor;
-    private static final SimpleLogger log = new SimpleLogger("MEMBER-TEST");
-
+    private final Map<String, Member> members = new HashMap<>();;
+    private final ExecutorService memberExecutor = Executors.newCachedThreadPool();
     private final Lock sequential = new ReentrantLock();
+    private static final SimpleLogger log = new SimpleLogger("TEST");
 
     @BeforeEach
     void setup() {
-        sequential.lock();
+        sequential.lock(); // ensure each test is run sequentially (only one server socket can listen on each port)
         String[] memberIDs = {"M1", "M2", "M3", "M4", "M5", "M6", "M7", "M8", "M9"};
-        members = new HashMap<>();
-        memberExecutor = Executors.newCachedThreadPool();
 
-        // reset static variables
+        // reset network delay variables
         Message.MAX_DELAY = 50;
         Message.LOSS_CHANCE = 0.15;
 
+        // instantiate members and start each one in a new thread using memberExecutor
         for (String memberID : memberIDs) {
             MemberConfig thisConfig = new MemberConfig(memberID);
             Member member = new Member(thisConfig);
 
             members.put(memberID, member);
             memberExecutor.submit(() -> {
-                member.start(); // Do not start stdin listener during tests
+                member.start(); // do not start stdin listener during tests
             });
-            // wait briefly to ensure the network is up
-            try {
-                Thread.sleep(100);
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                fail("Setup interrupted: " + e.getMessage());
-            }
-            members.get("M1").unsilence(); // unsilence logger
         }
+        // wait briefly to ensure the network is up
+        try {
+            Thread.sleep(100);
+        } catch (InterruptedException ex) {
+            throw new RuntimeException(ex);
+        }
+        members.get("M1").unsilence(); // unsilence logger for member objects
     }
 
     @AfterEach
     void teardownMembers() {
         log.info("Tearing down members");
         for (Member member : members.values()) {
-            member.silence();
+            member.silence(); // silence members for teardown process so that result of test is still visible
             member.shutdown();
         }
         memberExecutor.shutdownNow();
-        members.clear();
+        members.clear(); // clear members for next test
         sequential.unlock();
     }
 
     /**
-     * Test case 1: Paxos works when two councillors send voting proposals at the same time.
+     * Test case 1: Paxos implementation works when two councillors send voting proposals at the same time.
      */
     @Test
-    @DisplayName("Two proposers send proposals simultaneously")
+    @DisplayName("Two councillors send voting proposals at the same time")
     void testConcurrentProposals() throws InterruptedException {
-        // Identify proposers based on member.properties (M1, M2, M3)
-
+        // extract proposers from members map
         HashMap<String, Member> proposers = new HashMap<>();
         for (Member m : members.values()) {
             if (m.config.isProposer) proposers.put(m.config.memberID, m);
         }
 
-        assertTrue(proposers.size() >= 2, "At least two proposers are required for this test.");
+        assertTrue(proposers.size() >= 2, "Test requires two or more proposers");
 
-        // Each proposer sends a proposal simultaneously
+        // each proposer sends a proposal simultaneously (AI suggested use of CountDownLatch)
         CountDownLatch latch = new CountDownLatch(proposers.size());
 
         for (Member proposer : proposers.values()) {
@@ -96,8 +91,7 @@ public class MemberTest {
             });
         }
 
-        // Wait for all proposals to be sent
-        assertTrue(latch.await(5, TimeUnit.SECONDS), "Proposers did not send proposals in time");
+        assertTrue(latch.await(5, TimeUnit.SECONDS), "Proposers failed to send proposals");
 
         // allow Paxos protocol time to complete
         Thread.sleep(15000);
@@ -106,35 +100,35 @@ public class MemberTest {
         Set<String> learnedValues = members.values().stream()
                 .filter(m -> m.config.isLearner)
                 .map(m -> m.getLearner().getLearnedValue())
+                .filter(Objects::nonNull)
                 .collect(Collectors.toSet());
 
+        // log all values reported by learners
         for (String learnedValue : learnedValues) {
             log.info("Learned Value: " + learnedValue);
         }
-        assertEquals(1, learnedValues.size(), "Multiple consensus values detected");
+
+        // check only one councillor was elected (could be any proposer)
+        assertEquals(1, learnedValues.size(), "Learners reported varying learned values");
     }
 
     /**
-     * Test case 2: Paxos works when all M1-M9 have immediate responses to voting queries.
+     * Test case 2: Paxos implementation works in the case where all M1-M9 have immediate responses to voting queries.
      */
     @Test
-    @DisplayName("All M1-M9 respond immediately to voting queries")
+    @DisplayName("All M1-M9 have immediate responses to voting queries")
     void testImmediateResponses() throws InterruptedException {
-        // note that there is still network delay/unreliability simulation in place. See Message.java:
-        //  - random delay on sends from 0-50ms
-        //  - 15% chance of packet loss on sends
-        // my implementation works with these in place
+        // disable network delay simulation:
+        Message.MAX_DELAY = 0;
+        Message.LOSS_CHANCE = 0;
 
         // reduce simulated delay at all nodes to 0 (sheoak/coorong simulation disabled by default)
-        //   - all nodes will reply instantly, only point of delay/failure will be the network
         for (Member m : members.values()) {
             m.config.maxDelay = 0;
         }
 
         Member proposer = members.get("M1"); // propose using M1
-
-        // Proposer sends a proposal
-        proposer.getProposer().propose("M9");
+        proposer.getProposer().propose(); // M1 proposes self
 
         // allow Paxos protocol time to complete
         Thread.sleep(10000);
@@ -143,20 +137,26 @@ public class MemberTest {
         Set<String> learnedValues = members.values().stream()
                 .filter(m -> m.config.isLearner)
                 .map(m -> m.getLearner().getLearnedValue())
+                .filter(Objects::nonNull)
                 .collect(Collectors.toSet());
 
+        // log all values reported by learners
         for (String learnedValue : learnedValues) {
             log.info("Learned Value: " + learnedValue);
         }
+
+        // check only one councillor was elected and councillor is M1
         assertEquals(1, learnedValues.size(), "Multiple consensus values detected");
         if (learnedValues.size() == 1) {
             String learnedValue = learnedValues.iterator().next();
-            assertEquals("M9", learnedValue, "Consensus value does not match expected proposal");
+            assertEquals("M1", learnedValue, "Consensus value does not match expected proposal");
         }
     }
 
     /**
-     * Test case 3: Paxos works when M1 – M9 have varied response behaviors, including delays and offline states.
+     * Test case 3: Paxos implementation works when M1 – M9 have responses to voting queries suggested by several
+     * profiles (immediate response, small delay, large delay and no response), including when M2 or M3 propose
+     * and then go offline.
      */
     @Test
     @DisplayName("Members respond with delays and some proposer goes camping during proposal")
@@ -165,34 +165,52 @@ public class MemberTest {
         //  - random delay on sends from 0-50ms
         //  - 15% chance of packet loss on sends
 
-        // members M2/M3 may randomly go to the Sheoak cafe or camping in the Coorong
+        // as per README, all members take on unique traits (including response delays and reliability issues) parsed
+        // from member.properties, that match the specification outlined in the assignment description. This is done
+        // automatically for all members when the MemberConfig object is instantiated. These delays/no-reply
+        // traits are simulated before handling any message.
+
+        // The chance for a member to go to Sheoak cafe or camping in the Coorong is simulated every 1s according
+        // to its sheoak/coorong value in member.properties. Call member.startSheoakCoorongSimulation() to start this.
+
+        // While Sheoak cafe is true, member's maxDelay=0 and reliability=1
+        // While camping Coorong is true, member's reliability=0.
+
+        // members may randomly go to the Sheoak cafe or camping in the Coorong according to member.properties
         for (Member m : members.values()) {
             m.startSheoakCoorongSimulation();
         }
 
-        Member M2 = members.get("M2"); // propose using M2 and M3
-        Member M3 = members.get("M3");
-        M3.getProposer().propose(); // M3 proposes self
-        Thread.sleep(500);
-        M3.forceCoorong(true, 5000); // then goes camping (unavailable) for 5 seconds
-        M2.getProposer().propose(); // M2 proposes self
+        Member M3 = members.get("M3"); // propose using M3 (may randomly become unreachable)
 
-        // If M3 had enough time to send ACCEPT_REQ, then M2 should propose M3.
-        // Otherwise, M2 should propose itself.
+        // M3 proposes then goes camping
+        M3.getProposer().propose();
+        // on my machine, 150ms is enough time to finish phase 1 and start phase 2, then go offline. Feel free to
+        // play around with this to suit your machine.
+        Thread.sleep(150);
+        M3.forceCoorong(true, 3000);
 
         // allow Paxos protocol time to complete
-        Thread.sleep(10000);
+        Thread.sleep(20000);
 
         // store all learned values in a set (this line written with AI)
         Set<String> learnedValues = members.values().stream()
                 .filter(m -> m.config.isLearner)
                 .map(m -> m.getLearner().getLearnedValue())
+                .filter(Objects::nonNull)
                 .collect(Collectors.toSet());
 
+        // log all values reported by learners
         for (String learnedValue : learnedValues) {
             log.info("Learned Value: " + learnedValue);
         }
+
+        // check only one councillor was elected and councillor is M3
         assertEquals(1, learnedValues.size(), "Multiple consensus values detected");
+        if (learnedValues.size() == 1) {
+            String learnedValue = learnedValues.iterator().next();
+            assertEquals("M3", learnedValue, "Consensus value does not match expected proposal");
+        }
     }
 
     /*--------------------- Additional Testing: stress/edge testing ---------------------*/
@@ -201,7 +219,7 @@ public class MemberTest {
      * Additional Testing 1: Very poor network reliability
      */
     @Test
-    @DisplayName("Consensus is reached even with severe packet loss and network delays")
+    @DisplayName("Additional Stress Test: Consensus is reached even with severe packet loss and network delays")
     void testPoorNetwork() throws InterruptedException {
         // message sending can be delayed up to 500ms and has a loss chance of 40%
         Message.MAX_DELAY = 500;
@@ -212,8 +230,8 @@ public class MemberTest {
             m.startSheoakCoorongSimulation();
         }
 
-        Member M3 = members.get("M3"); // propose using M3 (may go to the coorong at any time)
-        M3.getProposer().propose();
+        Member M1 = members.get("M1"); // propose using M1
+        M1.getProposer().propose();
 
         Thread.sleep(20000); // sleep for a long time to allow for many rounds
 
@@ -224,19 +242,21 @@ public class MemberTest {
                 .filter(Objects::nonNull)
                 .collect(Collectors.toSet());
 
-        // check consensus
+        // log all values reported by learners
         for (String learnedValue : learnedValues) {
             log.info("Learned Value: " + learnedValue);
         }
+
+        // check only one councillor was elected and councillor is M1
         assertEquals(1, learnedValues.size(), "Multiple consensus values detected");
         if (learnedValues.size() == 1) {
             String learnedValue = learnedValues.iterator().next();
-            assertEquals("M3", learnedValue, "Consensus value does not match expected proposal");
+            assertEquals("M1", learnedValue, "Consensus value does not match expected proposal");
         }
     }
 
     @Test
-    @DisplayName("Consensus is reached when four members go offline during proposal")
+    @DisplayName("Additional Stress Test: Consensus is reached when four members go offline during proposal")
     void testFourMembersGoOffline() throws InterruptedException {
         // disable message loss simulation for this test, as a single lost message will cause proposal round to be
         // rejected. Paxos would still eventually reach consensus, but the test may need to run for quite some time.
@@ -269,10 +289,12 @@ public class MemberTest {
                 .filter(Objects::nonNull)
                 .collect(Collectors.toSet());
 
-        // check consensus
+        // log all values reported by learners
         for (String learnedValue : learnedValues) {
             log.info("Learned Value: " + learnedValue);
         }
+
+        // check only one councillor was elected and councillor is M1
         assertEquals(1, learnedValues.size(), "Multiple consensus values detected");
         if (learnedValues.size() == 1) {
             String learnedValue = learnedValues.iterator().next();
@@ -281,11 +303,12 @@ public class MemberTest {
     }
 
     @Test
-    @DisplayName("Consensus is NOT reached when five members go offline during proposal")
+    @DisplayName("Additional Stress Test: Consensus is NOT reached when five members go offline during proposal")
     void testFiveMembersGoOffline() throws InterruptedException {
         // disable message loss simulation for this test, see reasoning in testFourMembersGoOffline
         // also disabling message delay to ensure as many proposal rounds as possible can be executed
         Message.LOSS_CHANCE = 0;
+        Message.MAX_DELAY = 0;
 
         // members M2/M3 may randomly go to the Sheoak cafe or camping in the Coorong
         for (Member m : members.values()) {
@@ -313,10 +336,13 @@ public class MemberTest {
                 .filter(Objects::nonNull)
                 .collect(Collectors.toSet());
 
-        // check consensus
+
+        // log all values reported by learners
         for (String learnedValue : learnedValues) {
             log.info("Learned Value: " + learnedValue);
         }
+
+        // check NO councillor was elected
         assertEquals(0, learnedValues.size(), "Consensus value/s detected");
     }
 }

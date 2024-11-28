@@ -7,11 +7,9 @@ import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 
-// this util class was written with the assistance of AI
-
 /**
- * Class to provide object type representing a proposal.
- * Requires a proposal number and value to instantiate.
+ * Class to provide object type representing a proposal. Requires a proposal number and value to instantiate.
+ * Written with the assistance of AI.
  */
 public class Proposal {
     public String value;
@@ -24,10 +22,6 @@ public class Proposal {
     private final AtomicBoolean phaseOneCompleted = new AtomicBoolean(false);
     private final AtomicBoolean phaseTwoCompleted = new AtomicBoolean(false);
 
-    /**
-     * Object representing a proposal.
-     * @param proposalNumber    The proposalCounter when the proposal was created.
-     */
     public Proposal(int proposalNumber) {
         this.proposalNumber = proposalNumber;
     }

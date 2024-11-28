@@ -3,7 +3,7 @@ package com.a1848962.paxos.utils;
 import java.util.logging.*;
 
 /**
- * Class to simplify logging across implementation. Uses a Java Logger to send log messages to the console (stdout).
+ * Class to simplify logging across implementation. Uses a Java Logger to send log messages to STDOUT.
  * Written with the assistance of AI.
  */
 public class SimpleLogger {
