@@ -29,8 +29,8 @@ mine. Please consider manipulating the time slept in the failing tests based on 
 ## Usage
 Two Makefiles are provided that use the Maven wrapper for compilation. **Please change the name of the appropriate 
 Makefile for your OS to `Makefile`, and delete the other version.** You can then use the following Make commands:
-`make`      - clean compile the project
-`make test` - run all tests (see description above)
+- `make`      - clean compile the project
+- `make test` - run all tests (see description above)
 If you wish to play around with the system, you can manually run individual members (M1-M9) in a terminal. In a
 different terminal for each member, run: `make M<number>` where number is an integer from 1-9. e.g. `make M1`. 
 This will start running the member in the terminal. If the member is a proposer (M1,2, or 3),  proposals can be 
