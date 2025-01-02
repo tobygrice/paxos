@@ -1,4 +1,4 @@
-# Paxos Protocol - Tobias Grice a1848962
+# Paxos Protocol - Tobias Grice
 
 A note on AI:
  - AI was used for feedback and debugging.
