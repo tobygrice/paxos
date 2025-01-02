@@ -81,8 +81,7 @@ public class Proposer implements Member.ProposerRole {
         // create a new PREPARE_REQ message and a Proposal object to store proposal data.
         int currentProposalNum = proposalCounter.incrementAndGet();
         Message prepare = Message.prepareRequest(currentProposalNum, member.config.memberID);
-        Proposal proposal = new Proposal(currentProposalNum);
-        activeProposal = proposal;
+        activeProposal = new Proposal(currentProposalNum);
 
         // schedule proposal to timeout and retry after RETRY_DELAY
         scheduler.schedule(() -> {
