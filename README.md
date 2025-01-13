@@ -1,4 +1,4 @@
-# Paxos Protocol - Tobias Grice
+# Paxos Protocol - Toby Grice
 
 ## Testing
 A testing harness is provided in MemberTest.java. A Makefile is provided that uses the Maven wrapper for compilation. 
@@ -6,12 +6,15 @@ The following Make commands are available:
 - `make`      - clean compile the project
 - `make test` - run all tests
 
-# Usage
+## Usage
 To instantiate a Paxos member, you must provide it with a configuration. This configuration will contain a member ID,
 roles, address, port number, and a map of all other members in the network. The constructor signatures of MemberConfig
 and Member are as follows:
+
 `public MemberConfig(String id, boolean isLearner, boolean isAcceptor, boolean isProposer, String address, int port)`
+
 `public Member(MemberConfig config)`
+
 Below is an example of a new proposer member being instantiated, started, and sending a proposal.
 ```
 MemberConfig config = new MemberConfig("M1", true, true, true, "localhost", 5001);
