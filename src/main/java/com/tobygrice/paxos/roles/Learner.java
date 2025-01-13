@@ -1,7 +1,7 @@
-package com.a1848962.paxos.roles;
+package com.tobygrice.paxos.roles;
 
-import com.a1848962.paxos.network.*;
-import com.a1848962.paxos.utils.SimpleLogger;
+import com.tobygrice.paxos.network.Message;
+import com.tobygrice.paxos.utils.SimpleLogger;
 
 import java.io.IOException;
 import java.io.OutputStream;
@@ -50,22 +50,15 @@ public class Learner implements Member.LearnerRole {
         // simulate node reliability (includes changes due to coorong/sheoak)
         if (member.simulateNodeReliability()) return;
 
-        // simulate node delays (includes changes due to coorong/sheoak)
-        try {
-            Thread.sleep(member.simulateNodeDelay());
-        } catch (InterruptedException e) {
-            throw new RuntimeException(e);
-        }
-
-        log.info(member.config.memberID + ": Handling LEARN request from " + message.senderID);
+        log.info(member.config.getMemberID() + ": Handling LEARN request from " + message.senderID);
 
         if (message.value != null) {
             learnedValue.setLength(0); // overwrite any previously learned value
             learnedValue.append(message.value);
-            log.info(member.config.memberID + ": Learned from " + message.senderID + " elected councillor: " + getLearnedValue());
+            log.info(member.config.getMemberID() + ": Learned from " + message.senderID + " elected councillor: " + getLearnedValue());
             sendAck(socketOut); // send ack to confirm value has been learned
         } else {
-            log.info(member.config.memberID + ": Learner node instructed to learn null value by " + message.senderID);
+            log.info(member.config.getMemberID() + ": Learner node instructed to learn null value by " + message.senderID);
             sendNack(socketOut); // send nack
         }
     }
@@ -76,12 +69,12 @@ public class Learner implements Member.LearnerRole {
      * @param socketOut     the socket to deliver the ACK to
      */
     private void sendAck(OutputStream socketOut) {
-        Message ack = Message.ack(this.member.config.memberID);
+        Message ack = Message.ack(this.member.config.getMemberID());
         try {
             socketOut.write(ack.marshall().getBytes());
             socketOut.flush();
         } catch (IOException ex) {
-            log.info(member.config.memberID + ": Error sending ACK - " + ex.getMessage());
+            log.info(member.config.getMemberID() + ": Error sending ACK - " + ex.getMessage());
         }
     }
 
@@ -91,12 +84,12 @@ public class Learner implements Member.LearnerRole {
      * @param socketOut     the socket to deliver the NACK to
      */
     private void sendNack(OutputStream socketOut) {
-        Message nack = Message.nack(this.member.config.memberID);
+        Message nack = Message.nack(this.member.config.getMemberID());
         try {
             socketOut.write(nack.marshall().getBytes());
             socketOut.flush();
         } catch (IOException ex) {
-            log.info(member.config.memberID + ": Error sending NACK - " + ex.getMessage());
+            log.info(member.config.getMemberID() + ": Error sending NACK - " + ex.getMessage());
         }
     }
 }

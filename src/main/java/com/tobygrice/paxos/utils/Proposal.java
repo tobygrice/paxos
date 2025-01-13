@@ -1,6 +1,6 @@
-package com.a1848962.paxos.utils;
+package com.tobygrice.paxos.utils;
 
-import com.a1848962.paxos.network.*;
+import com.tobygrice.paxos.network.Message;
 
 import java.util.Collection;
 import java.util.concurrent.*;
@@ -9,7 +9,6 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * Class to provide object type representing a proposal. Requires a proposal number and value to instantiate.
- * Written with the assistance of AI.
  */
 public class Proposal {
     public String value;

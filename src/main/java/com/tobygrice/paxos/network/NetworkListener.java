@@ -1,4 +1,4 @@
-package com.a1848962.paxos.network;
+package com.tobygrice.paxos.network;
 
 import java.io.BufferedReader;
 import java.io.IOException;
@@ -8,12 +8,12 @@ import java.net.Socket;
 import java.net.ServerSocket;
 import java.util.concurrent.*;
 
-import com.a1848962.paxos.utils.SimpleLogger;
+import com.tobygrice.paxos.utils.SimpleLogger;
 
 /**
- *  Network infrastructure class to listen for incoming messages, unmarshall them and pass them to the parent member
+ *  NetworkListener infrastructure class to listen for incoming messages, unmarshall them and pass them to the parent member
  */
-public class Network {
+public class NetworkListener {
 
     private ServerSocket serverSocket;
     private final int listenPort;
@@ -44,7 +44,7 @@ public class Network {
         void handleIncomingMessage(Message message, OutputStream socketOut);
     }
 
-    public Network(int listenPort, PaxosHandler handler) {
+    public NetworkListener(int listenPort, PaxosHandler handler) {
         this.listenPort = listenPort;
         this.handler = handler;
     }
@@ -64,11 +64,11 @@ public class Network {
                         Socket clientSocket = serverSocket.accept();
                         executor.submit(() -> connectionHandler(clientSocket));
                     } catch (IOException ex) {
-                        log.error("Network: error accepting connection - " + ex.getMessage());
+                        log.error("NetworkListener: error accepting connection - " + ex.getMessage());
                     }
                 }
             } catch (IOException ex) {
-                log.error("Network: error starting server on port " + listenPort + " - " + ex.getMessage());
+                log.error("NetworkListener: error starting server on port " + listenPort + " - " + ex.getMessage());
             }
         });
     }
@@ -89,7 +89,7 @@ public class Network {
                 handler.handleIncomingMessage(receivedMessage, socketOut);
             }
         } catch (IOException ex) {
-            log.error("Network: Error handling incoming connection - " + ex.getMessage());
+            log.error("NetworkListener: Error handling incoming connection - " + ex.getMessage());
         }
     }
 
@@ -113,6 +113,6 @@ public class Network {
             log.error("Interrupted during executor shutdown.");
             Thread.currentThread().interrupt();
         }
-        log.info("Network shutdown complete");
+        log.info("NetworkListener shutdown complete");
     }
 }

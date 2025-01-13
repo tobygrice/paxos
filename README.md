@@ -1,20 +1,26 @@
-# Paxos Protocol - Tobias Grice a1848962
-
-A note on AI:
- - AI was used for feedback and debugging.
- - AI was used to create the file structure for this project, including suggestions for class structures and inheritance.
- - It was used in some utility files, such as Proposal.java, MemberConfig.java, and SimpleLogger.java.
- - **Any AI written code is clearly identified in comments.**
+# Paxos Protocol - Tobias Grice
 
 ## Testing
-A comprehensive testing harness is provided in MemberTest.java.
-
-## Usage
-A Makefile is provided that uses the Maven wrapper for compilation. The following Make commands are available:
+A testing harness is provided in MemberTest.java. A Makefile is provided that uses the Maven wrapper for compilation. 
+The following Make commands are available:
 - `make`      - clean compile the project
-- `make test` - run all tests (see description above)
+- `make test` - run all tests
 
-If you wish to play around with the system, you can manually run individual members in a terminal. In a
-different terminal for each member, run: `make M<number>` where number is an integer. e.g. `make M1`. 
-This will start running the member in the terminal. If the member is a proposer (M1,2, or 3),  proposals can be 
-triggered manually from stdin. Usage instructions are provided to stdout when a proposer member is run.
+# Usage
+To instantiate a Paxos member, you must provide it with a configuration. This configuration will contain a member ID,
+roles, address, port number, and a map of all other members in the network. The constructor signatures of MemberConfig
+and Member are as follows:
+`public MemberConfig(String id, boolean isLearner, boolean isAcceptor, boolean isProposer, String address, int port)`
+`public Member(MemberConfig config)`
+Below is an example of a new proposer member being instantiated, started, and sending a proposal.
+```
+MemberConfig config = new MemberConfig("M1", true, true, true, "localhost", 5001);
+config.addNetworkMember("M2", true, true, true, "localhost", 5002);
+config.addNetworkMember("M3", true, true, false, "localhost", 5003);
+config.addNetworkMember("M4", true, true, false, "localhost", 5004);
+config.addNetworkMember("M5", true, false, false, "localhost", 5005);
+
+Member m1 = new Member(config);
+m1.start()
+m1.propose("VALUE")
+```

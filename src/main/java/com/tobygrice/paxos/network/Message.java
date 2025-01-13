@@ -1,6 +1,6 @@
-package com.a1848962.paxos.network;
+package com.tobygrice.paxos.network;
 
-import com.a1848962.paxos.utils.SimpleLogger;
+import com.tobygrice.paxos.utils.SimpleLogger;
 
 import com.google.gson.Gson;
 
@@ -19,9 +19,12 @@ import java.util.concurrent.Executors;
  */
 public class Message {
     // do not serialise:
+    // delay simulation variables:
+    public static int MAX_DELAY = 0; // maximum send delay in milliseconds
+    public static double LOSS_CHANCE = 0; // 0% chance of message loss
+
+    // utility variables:
     private static final Gson gson = new Gson();
-    public static int MAX_DELAY = 50; // maximum send delay in milliseconds
-    public static double LOSS_CHANCE = 0.15; // 15% chance of message loss
     private static final ExecutorService executor = Executors.newCachedThreadPool();
     private static final SimpleLogger log = new SimpleLogger("MESSAGE");
     private static final Random random = new Random();
